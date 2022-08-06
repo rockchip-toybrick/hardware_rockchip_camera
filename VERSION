@@ -114,21 +114,4 @@ V3.0.1
 V3.0.2
 	- rkisp2: support xml config multi camera mode.
 	- rkisp2: fix rk356x double camera link issue.
-V3.0.3
-    - rkisp2: add rk3562 support.
-    - rkisp2: add rkisp_iqtool link for rk3588 rk3562.
-
-V3.1.0
-    - rkisp2: fix change resolution take pic error.
-    - rkisp2: remove flush timeout.
-    - fix one request been multi pushed to mPendingRequests.
-    - rkisp2: qbuf before stream on.
-    - rkisp2: frameworker qbuf after request done.
-    - rkisp2: fix low resolution take pic abnormal.
-V3.2.0
-    - rkisp2: Add support for external light sensor listener.
-    - rkisp2: add support for setting wb gain.
-    - rkisp2: fix duplicated get pre-settings flow.
-    - rkisp2: prefer the last wb gains if available.
-    - rkisp2: fix save wrong exposure time.
 

@@ -2775,6 +2775,7 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
             addLinkParams("rkisp-isp-subdev", 2, "rkisp_mainpath", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
             addLinkParams("rkisp-isp-subdev", 2, "rkisp_selfpath", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
             addLinkParams("rkisp-isp-subdev", 2, "rkisp_iqtool", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+
         } else {
             addLinkParams(mipName, mipSrcPad, csiName, csiSinkPad, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
             addLinkParams(csiName, csiSrcPad, IspName, ispSinkPad, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
@@ -3624,7 +3625,7 @@ RKISP2GraphConfig::Rectangle::Rectangle(): w(0),h(0),t(0),l(0) {}
 RKISP2GraphConfig::SubdevPad::SubdevPad(): Rectangle(), mbusFormat(0){}
 RKISP2GraphConfig::SourceNodeInfo::SourceNodeInfo() : metadataEnabled(false),
                                                 interlaced(0) {}
-                                                
+
 } // namespace rkisp2
 } // namespace camera2
 } // namespace android

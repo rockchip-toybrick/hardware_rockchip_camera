@@ -818,7 +818,7 @@ void RKISP2PSLConfParser::handleRKISP2SensorInfo(const char *name, const char **
         LOGE("@%s, name:%s, atts[0]:%s, xml format wrong", __func__, name, atts[0]);
         return;
     }
-    
+
     rkisp2::RKISP2CameraCapInfo * info = static_cast<rkisp2::RKISP2CameraCapInfo*>(mCaps[mSensorIndex]);
 
     if (strcmp(name, "sensorType") == 0) {
