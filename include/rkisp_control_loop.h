@@ -90,6 +90,14 @@ struct rkisp_cl_prepare_params_s {
   uint32_t height;
   //RK AIQ working mode
   const char* work_mode;
+  // initiate the linear exposure time in units of 1 second
+  float lin_exp_init_time;
+  // initiate the linear exposure gain
+  float lin_exp_init_gain;
+  // initiate the cct
+  float cct;
+  // indicate whether prepare configuration is done before
+  bool is_pre_config_done;
 };
 
 /* A struct used to represent the new parameters set to CL

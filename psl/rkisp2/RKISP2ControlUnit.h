@@ -27,6 +27,7 @@
 #include "RKISP2CaptureUnitSettings.h"
 #include "RKISP2RequestCtrlState.h"
 #include "RKISP2CtrlLoop.h"
+#include "sensor_listener/goog_sensor_environment.h"
 
 extern "C" {
     typedef void (metadata_result_callback)(
@@ -253,6 +254,8 @@ private:  /* Methods */
     status_t getDevicesPath();
     status_t processSoCSettings(const CameraMetadata *settings);
     nsecs_t getFrameDuration(int id);
+    status_t saveExposure();
+    status_t getPreSettings(struct rkisp_cl_prepare_params_s *param);
 
 private:  /* Members */
     SharedItemPool<RKISP2RequestCtrlState> mRequestStatePool;
@@ -328,6 +331,26 @@ private:  /* Members */
     int mSofSyncId;
     int mStilCapPreCapreqId;
     bool mIsStillChangeStream;
+
+    int32_t mSensitivity; // ISO value
+    float mLastLight;
+    float mLastCct;
+    enum Hal_EnvironmentSensorType {
+        HAL_ENV_SENSOR_MIN = 0,
+        HAL_ENV_SENSOR_LIGHT = 1 << 0,
+        HAL_ENV_SENSOR_CCT = 1 << 1,
+        HAL_ENV_SENSOR_MAX
+    };
+    uint8_t mEnvSensorEnable;
+    bool mIsPreConfigDone;
+    /**
+     * External light sensor
+     */
+    sp<camera_sensor_listener::GoogSensorEnvironment> mExtLightSensor;
+    /**
+     * External CCt sensor
+     */
+    sp<camera_sensor_listener::GoogSensorEnvironment> mExtCctSensor;
 };  // class RKISP2ControlUnit
 
 const element_value_t CtlUMsg_stringEnum[] = {

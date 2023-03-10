@@ -359,7 +359,9 @@ LOCAL_SHARED_LIBRARIES += \
     android.hardware.graphics.mapper@3.0 \
     android.hardware.graphics.mapper@4.0 \
     libgralloctypes \
-    libhidlbase
+    libhidlbase \
+    libtinyxml2 \
+    lib_sensor_listener_local
 
 LOCAL_HEADER_LIBRARIES += \
     android.hardware.graphics.common@1.2 \
@@ -390,6 +392,7 @@ ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 31)))
     LOCAL_CPPFLAGS += -Wno-unreachable-code-loop-increment
     LOCAL_HEADER_LIBRARIES += \
        libhardware_rockchip_headers
+
 ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 33)))
 LOCAL_CFLAGS += -DANDROID_VERSION_ABOVE_13_X
 LOCAL_SHARED_LIBRARIES += \
@@ -397,6 +400,7 @@ LOCAL_SHARED_LIBRARIES += \
     android.hardware.graphics.allocator-V1-ndk
 LOCAL_STATIC_LIBRARIES += \
     libaidlcommonsupport
+
 endif # sdk 33
 endif # sdk 31
 endif # sdk 30

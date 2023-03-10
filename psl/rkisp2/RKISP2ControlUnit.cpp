@@ -34,8 +34,13 @@
 #include "MediaEntity.h"
 #include "rkcamera_vendor_tags.h"
 //#include "TuningServer.h"
+#include "tinyxml2.h"
+
+using namespace tinyxml2;
+using namespace android::camera_sensor_listener;
 
 USING_METADATA_NAMESPACE;
+
 static const int SETTINGS_POOL_SIZE = MAX_REQUEST_IN_PROCESS_NUM * 2;
 #define FLASH_OFFSET 8.0 //ms
 #define FLASH_TRIGGER_TH 5.0f
@@ -253,6 +258,11 @@ int SocCamFlashCtrUnit::setV4lFlashMode(int mode, int power, int timeout, int st
     mV4lFlashMode = fl_v4l_mode;
 
     return 0;
+}
+
+void processExtSensorEvent(const char* sensorName,
+                           const ExtendedSensorEvent& event) {
+    // TODO
 }
 
 RawCamFlashCtrUnit::RawCamFlashCtrUnit(const char* name,
@@ -602,6 +612,9 @@ RKISP2ControlUnit::RKISP2ControlUnit(RKISP2ImguUnit *thePU,
     mSofSyncStae = false;
     mSofSyncId = -1;
     mStilCapPreCapreqId = -1;
+    mSensitivity = 100; //gain 1x
+    mIsPreConfigDone = false;
+    mEnvSensorEnable = 0;
 }
 
 status_t
@@ -763,6 +776,41 @@ RKISP2ControlUnit::init()
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
     status_t status = OK;
     const char *sensorName = nullptr;
+
+    // Create external light sensor listener
+    {
+        mExtLightSensor = GoogSensorEnvironment::Create(EnvironmentSensorType::LIGHT);
+        mEnvSensorEnable |= mExtLightSensor->GetSensorEnablingStatus();
+        if (mExtLightSensor != nullptr && (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT)) {
+            const char *name = mExtLightSensor->GetSensorName();
+            LOGD("@%s Light SensorName(%s)", __FUNCTION__, name);
+            std::function<void(const ExtendedSensorEvent& event)> processFunc =
+            std::bind(processExtSensorEvent, name, std::placeholders::_1);
+            mExtLightSensor->SetEventProcessor(processFunc);
+            mExtLightSensor->SetSampFreq(100000);
+            mExtLightSensor->WaitForEvent(300);
+        } else {
+            LOGW("@%s LightSensor not enabled!", __FUNCTION__);
+        }
+        mLastLight = 0;
+    }
+
+    // Create external cct sensor listener
+    {
+        mExtCctSensor = GoogSensorEnvironment::Create(EnvironmentSensorType::CCT);
+        mEnvSensorEnable |= mExtLightSensor->GetSensorEnablingStatus() << 1;
+        if (mExtLightSensor != nullptr && (mEnvSensorEnable & HAL_ENV_SENSOR_CCT)) {
+            const char *name = mExtCctSensor->GetSensorName();
+            LOGD("@%s CCT SensorName(%s)", __FUNCTION__, name);
+            std::function<void(const ExtendedSensorEvent& event)> processFunc =
+                std::bind(processExtSensorEvent, name, std::placeholders::_1);
+            mExtCctSensor->SetEventProcessor(processFunc);
+            mExtCctSensor->SetSampFreq(100000);
+        } else {
+            LOGW("@%s CctSensor not enabled!", __FUNCTION__);
+        }
+        mLastCct = 0;
+    }
 
     //Cache the static metadata values we are going to need in the capture unit
     if (initStaticMetadata() != NO_ERROR) {
@@ -949,7 +997,7 @@ RKISP2ControlUnit::~RKISP2ControlUnit()
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
 
     mSettingsHistory.clear();
-
+    saveExposure();
     requestExitAndWait();
 
     if (mMessageThread != nullptr) {
@@ -1053,6 +1101,12 @@ RKISP2ControlUnit::configStreams(std::vector<camera3_stream_t*> &activeStreams, 
 
         const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
         prepareParams.work_mode = cap->getAiqWorkingMode();
+        /* TODO */
+        getPreSettings(&prepareParams);
+        ALOGD("%s:%d linear exposure time = %f, gain = %f", __FUNCTION__, __LINE__,
+              prepareParams.lin_exp_init_time, prepareParams.lin_exp_init_gain);
+
+        prepareParams.is_pre_config_done = mIsPreConfigDone;
 
         if (mCtrlLoop && mEnable3A ) {
             status = mCtrlLoop->start(prepareParams);
@@ -1060,6 +1114,7 @@ RKISP2ControlUnit::configStreams(std::vector<camera3_stream_t*> &activeStreams, 
                 LOGE("Failed to start 3a control loop!");
                 return status;
             }
+            mIsPreConfigDone = true;
             /* used for switch resolution take picture */
             if (mStillCapSyncState && isStillStream && mRawCamFlashCtrUnit.get()) {
                 int ret = mRawCamFlashCtrUnit->setStillChangeFlash();
@@ -1080,6 +1135,87 @@ RKISP2ControlUnit::requestExitAndWait()
     status_t status = mMessageQueue.send(&msg, MESSAGE_ID_EXIT);
     status |= mMessageThread->requestExitAndWait();
     return status;
+}
+
+status_t
+RKISP2ControlUnit::saveExposure()
+{
+    XMLDocument lastConf;
+    XMLElement *root = NULL;
+    XMLElement *camera = NULL;
+    XMLElement *conf = NULL;
+    const char *lastConfPath = "/data/vendor/camera/last_exposure_param.xml";
+    const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
+    const char *camSensorName = cap->getSensorName();
+    const char *camModuleId = cap->mModuleIndexStr.c_str();
+
+    if (lastConf.LoadFile(lastConfPath) != XML_SUCCESS) {
+        const char *declaration = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
+        lastConf.Parse(declaration);
+
+        root = lastConf.NewElement("configurations");
+        lastConf.InsertEndChild(root);
+
+        camera = lastConf.NewElement("camera");
+        camera->SetAttribute("cameraId", std::to_string(mCameraId).c_str());
+        camera->SetAttribute("name", camSensorName);
+        camera->SetAttribute("moduleId", camModuleId);
+        root->InsertEndChild(camera);
+
+        conf = lastConf.NewElement("configuration");
+        camera->InsertEndChild(conf);
+
+        ALOGD("%s:%d create and save the last configuration", __FUNCTION__, __LINE__);
+    } else {
+        root = lastConf.FirstChildElement("configurations");
+        if (root) {
+            bool found = false;
+
+            /* Check whether the configuration of this camera is exist */
+            camera = root->FirstChildElement("camera");
+            while (camera) {
+                if ((camera->Attribute("name") &&
+                     !strcmp(camera->Attribute("name"), camSensorName)) &&
+                    (camera->Attribute("moduleId") &&
+                     !strcmp(camera->Attribute("moduleId"), camModuleId))) {
+                    conf = camera->FirstChildElement("configuration");
+                    found = true;
+                    break;
+                }
+
+                camera = camera->NextSiblingElement("camera");
+            }
+
+            if (!found) {
+                camera = lastConf.NewElement("camera");
+                camera->SetAttribute("cameraId", std::to_string(mCameraId).c_str());
+                camera->SetAttribute("name", camSensorName);
+                camera->SetAttribute("moduleId", camModuleId);
+                root->InsertEndChild(camera);
+
+                conf = lastConf.NewElement("configuration");
+                camera->InsertEndChild(conf);
+            }
+        }
+
+        ALOGD("%s:%d save the last configuration", __FUNCTION__, __LINE__);
+    }
+
+    if (conf) {
+        conf->SetAttribute("lux", std::to_string(mLastLight).c_str());
+        conf->SetAttribute("cct", std::to_string(mLastCct).c_str());
+        conf->SetAttribute("time", std::to_string((float)mExposureTimens / 1000000000).c_str());
+        conf->SetAttribute("gain", std::to_string((float)mSensitivity / 100).c_str());
+        ALOGD("@%s: moduleId(%d)-%s save lux=%f, cct=%f, time=%f, gain=%f.",
+             __FUNCTION__, camModuleId, camSensorName, mLastLight, mLastCct,
+             (float)mExposureTimens / 1000000000, mSensitivity / 100);
+
+        lastConf.SaveFile(lastConfPath);
+    } else {
+        ALOGD("%s:%d unexpected error", __FUNCTION__, __LINE__);
+    }
+
+    return NO_ERROR;
 }
 
 status_t
@@ -1449,6 +1585,28 @@ RKISP2ControlUnit::processRequestForCapture(std::shared_ptr<RKISP2RequestCtrlSta
     status = completeProcessing(reqState);
     if (status != OK)
         LOGE("Cannot complete the buffer processing - fix the bug!");
+
+    std::vector<int64_t> timestamps;
+    std::vector<float> event_data;
+    std::vector<int64_t> arrival_timestamps;
+
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT) {
+        mExtLightSensor->GetLatestNSensorEvents(1, &timestamps,
+                                                &event_data,
+                                                &arrival_timestamps);
+        if (!event_data.empty())
+            mLastLight = event_data[0];
+    }
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT) {
+        mExtCctSensor->GetLatestNSensorEvents(1, &timestamps,
+                                              &event_data,
+                                              &arrival_timestamps);
+        if (!event_data.empty())
+            mLastCct = event_data[0];
+    }
+
+    LOGD("light = %f, cct = %f, timens = %" PRId64 ", iso gain = %d",
+          mLastLight, mLastCct, mExposureTimens, mSensitivity);
 
     return status;
 }
@@ -1951,6 +2109,7 @@ RKISP2ControlUnit::metadataReceived(int id, const camera_metadata_t *metas, int 
         }
     }
 
+#if 0
     entry = result.find(ANDROID_CONTROL_AE_STATE);
     if (entry.count == 1) {
         LOGD_FLASH("reqid(%d) metadataReceived ANDROID_CONTROL_AE_STATE:%d", id, entry.data.u8[0]);
@@ -1965,13 +2124,43 @@ RKISP2ControlUnit::metadataReceived(int id, const camera_metadata_t *metas, int 
                 mExposureTimens = entry.data.i64[0];
                 LOGD_FLASH("%s:%d,  reqid(%d) exposure_time %" PRId64 "ns",
                      __FUNCTION__, __LINE__, id, mExposureTimens);
+            }  else {
+                LOGD("No ANDROID_SENSOR_EXPOSURE_TIME in results!");
             }
+
         } else {
             LOGD_FLASH("reqid(%d) metadataReceived ANDROID_CONTROL_AE_STATE:%d, mStillCapSyncState(%d)",
                     id, entry.data.u8[0], mStillCapSyncState);
         }
     }
+#else
+    /* get gain & exposuretime for Ae */
+    entry = result.find(ANDROID_CONTROL_AE_STATE);
+    if (entry.count == 1) {
+        LOGD("reqid(%d) metadataReceived ANDROID_CONTROL_AE_STATE:%d", id, entry.data.u8[0]);
+        if (entry.data.u8[0] == ANDROID_CONTROL_AE_STATE_CONVERGED) {
+            //get ae coveraged sensor.exposureTime & gain
+            entry = result.find(ANDROID_SENSOR_EXPOSURE_TIME);
+            if (entry.count == 1) {
+                mExposureTimens = entry.data.i64[0];
+                LOGD("%s:%d,  reqid(%d) exposure_time %" PRId64 "ns",
+                     __FUNCTION__, __LINE__, id, mExposureTimens);
+            } else {
+                LOGD("No ANDROID_SENSOR_EXPOSURE_TIME in results!");
+            }
 
+            entry = result.find(ANDROID_SENSOR_SENSITIVITY);
+            if (entry.count == 1) {
+                mSensitivity = entry.data.i32[0];
+                LOGD("%s:%d,  reqid(%d) iso: %d",
+                     __FUNCTION__, __LINE__, id, mSensitivity);
+            } else {
+                LOGD("No ANDROID_SENSOR_SENSITIVITY in results!");
+            }
+
+        }
+    }
+#endif
     result.release();
 
     if (id != -1) {
@@ -2025,6 +2214,228 @@ RKISP2ControlUnit::handleMetadataReceived(Message &msg) {
     request->mCallback->metadataDone(request, request->getError() ? -1 : CONTROL_UNIT_PARTIAL_RESULT);
     mWaitingForCapture.erase(reqId);
 
+    return status;
+}
+
+status_t
+RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
+{
+    status_t status = OK;
+    const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
+    const char *camSensorName = cap->getSensorName();
+    const char *camModuleId = cap->mModuleIndexStr.c_str();
+
+
+    std::vector<int64_t> timestamps;
+    std::vector<float> event_data;
+    std::vector<int64_t> arrival_timestamps;
+
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT) {
+        mExtLightSensor->GetLatestNSensorEvents(1, &timestamps,
+                                                &event_data,
+                                                &arrival_timestamps);
+        if (!event_data.empty())
+            mLastLight = event_data[0];
+    }
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT) {
+        mExtCctSensor->GetLatestNSensorEvents(1, &timestamps,
+                                              &event_data,
+                                              &arrival_timestamps);
+        if (!event_data.empty())
+            mLastCct = event_data[0];
+    }
+
+    ALOGD("%s:%d current lux = %f, cct = %f", __FUNCTION__, __LINE__,
+          mLastLight, mLastCct);
+
+    XMLDocument preConf;
+    const char *preConfName = "/vendor/etc/camera/pre_exposure_param.xml";
+    XMLDocument lastConf;
+    const char *lastConfPath = "/data/vendor/camera/last_exposure_param.xml";
+    XMLElement *root;
+    std::vector<std::tuple<float, float, float, float>> confAttrs;
+    bool found = false;
+
+    if (lastConf.LoadFile(lastConfPath) == XML_SUCCESS) {
+        root = lastConf.FirstChildElement("configurations");
+
+        if (root) {
+            XMLElement *camera = root->FirstChildElement("camera");
+
+            while (camera) {
+                /* Find the last saved configuration of the current opened camera */
+                if ((camera->Attribute("name") &&
+                     !strcmp(camera->Attribute("name"), camSensorName)) &&
+                    (camera->Attribute("moduleId") &&
+                     !strcmp(camera->Attribute("moduleId"), camModuleId))) {
+                    XMLElement *conf = camera->FirstChildElement("configuration");
+                    float lux = conf->Attribute("lux") ? std::stof(conf->Attribute("lux")) : 0;
+                    float cct = conf->Attribute("cct") ? std::stof(conf->Attribute("cct")) : 0;
+                    float time = conf->Attribute("time") ? std::stof(conf->Attribute("time")) : 0;
+                    float gain = conf->Attribute("gain") ? std::stof(conf->Attribute("gain")) : 0;
+
+                    /*
+                    * NOTE: If the brightness delta is within ±20% and the CCT delta is within ±15%,
+                    * use last exposure time and gain for initialization.
+                    */
+                    if ((((lux / mLastLight) >= 0.8f) && (lux / mLastLight) <= 1.2f) &&
+                        (((cct / mLastCct) >= 0.8f) && (cct / mLastCct) <= 1.2f)) {
+                        param->lin_exp_init_time = time;
+                        param->lin_exp_init_gain = gain;
+                        param->cct = cct;
+                        ALOGD("%s:%d use the last configuration for %s",
+                              __FUNCTION__, __LINE__, camSensorName);
+                        goto exit;
+                    } else if (((lux >= 0.0f) && (lux <= 7.0f)) &&
+                               ((mLastLight >= 0.0f) && (mLastLight <= 7.0f))) {
+                        param->lin_exp_init_time = time;
+                        param->lin_exp_init_gain = gain;
+                        param->cct = cct;
+                        ALOGD("%s:%d use the last configuration in low brightness for %s",
+                              __FUNCTION__, __LINE__, camSensorName);
+                        goto exit;
+                    }
+                }
+
+                camera = camera->NextSiblingElement("camera");
+            }
+        }
+    }
+
+    /* Load exposure configuration and find the best exposure parameter*/
+    if (preConf.LoadFile(preConfName) != XML_SUCCESS) {
+        param->lin_exp_init_time = 0.0001; // 0.1 ~ 100 ms
+        param->lin_exp_init_gain = 1; // 1 ~ 64
+        param->cct = mLastCct;
+        ALOGD("%s:%d use the default configuration", __FUNCTION__, __LINE__);
+        goto exit;
+    }
+
+    root = preConf.FirstChildElement("configurations");
+    if (root) {
+        XMLElement *camera = root->FirstChildElement("camera");
+
+        while (camera) {
+            /* Find the configuration of current opened camera */
+            if ((camera->Attribute("name") &&
+                 !strcmp(camera->Attribute("name"), camSensorName)) &&
+                (camera->Attribute("moduleId") &&
+                 !strcmp(camera->Attribute("moduleId"), camModuleId))) {
+                XMLElement *conf = camera->FirstChildElement("configuration");
+
+                while (conf) {
+                    float lux = conf->Attribute("lux") ? std::stof(conf->Attribute("lux")) : 0;
+                    float cct = conf->Attribute("cct") ? std::stof(conf->Attribute("cct")) : 0;
+                    float time = conf->Attribute("time") ? std::stof(conf->Attribute("time")) : 0;
+                    float gain = conf->Attribute("gain") ? std::stof(conf->Attribute("gain")) : 0;
+
+                    confAttrs.push_back(std::make_tuple(lux, cct, time, gain));
+                    conf = conf->NextSiblingElement("configuration");
+                }
+            }
+
+            camera = camera->NextSiblingElement("camera");
+        }
+    }
+
+    if (confAttrs.empty()) {
+        param->lin_exp_init_time = 0.0001; // 0.1 ~ 100 ms
+        param->lin_exp_init_gain = 1; // 1 ~ 64
+        param->cct = mLastCct;
+        ALOGD("%s:%d use the default configuration for %s",
+              __FUNCTION__, __LINE__, camSensorName);
+        goto exit;
+    }
+
+    /* TODO: sort confAttrs */
+    if (mLastLight <= 7.0f) {
+        /* TODO: find configuration id 0 here */
+        param->lin_exp_init_time = std::get<2>(confAttrs[0]);
+        param->lin_exp_init_gain = std::get<3>(confAttrs[0]);
+        param->cct = mLastCct;
+        ALOGD("%s:%d use the prepare configuration in low brightness for %s",
+              __FUNCTION__, __LINE__, camSensorName);
+        found = true;
+    } else if ((mLastLight > 7.0f) && (mLastLight <= 14.0f)) {
+        /* TODO: validate the length here */
+        param->lin_exp_init_time = std::get<2>(confAttrs[1]);
+        param->lin_exp_init_gain = std::get<3>(confAttrs[1]);
+        param->cct = mLastCct;
+        ALOGD("%s:%d use the prepare configuration in 14 lux for %s",
+              __FUNCTION__, __LINE__, camSensorName);
+        found = true;
+    } else {
+        float curLux = 0;
+        float curGain = 0;
+        float curTime = 0;
+        float prevLux = std::get<0>(confAttrs[0]);
+        float prevGain = std::get<3>(confAttrs[0]);
+        float prevTime = std::get<2>(confAttrs[0]);
+        int i;
+        for (i = 1; i < confAttrs.size(); ++i) {
+            curLux = std::get<0>(confAttrs[i]);
+            curGain = std::get<3>(confAttrs[i]);
+            curTime = std::get<2>(confAttrs[i]);
+            if ((mLastLight > prevLux) && (mLastLight <= curLux)) {
+                /* Linear Interpolation method */
+                float gain = prevGain + (mLastLight - prevLux) * ((curGain - prevGain) / (curLux - prevLux));
+                float time = prevTime + (mLastLight - prevLux) * ((curTime - prevTime) / (curLux - prevLux));
+
+                if (gain < 1.0f) {
+                    param->lin_exp_init_time = time;
+                    param->lin_exp_init_gain = prevGain;
+                    param->cct = mLastCct;
+                } else {
+                    param->lin_exp_init_time = prevTime;
+                    param->lin_exp_init_gain = gain;
+                    param->cct = mLastCct;
+                }
+
+                ALOGD("%s:%d get the configuration using interpolation method for %s",
+                      __FUNCTION__, __LINE__, camSensorName);
+                found = true;
+                break;
+            }
+
+            prevLux = curLux;
+            prevGain = curGain;
+            prevTime = curTime;
+        }
+
+        /* Current brightness is bigger than the biggest brightness in the prepare configuration */
+        if ((i == confAttrs.size()) && (mLastLight > curLux)) {
+            float gain = (mLastLight / curLux) * curGain;
+            float time = (mLastLight / curLux) * curTime;
+
+            if (gain < 1.0f) {
+                param->lin_exp_init_time = time;
+                param->lin_exp_init_gain = prevGain;
+                param->cct = mLastCct;
+            } else {
+                param->lin_exp_init_time = prevTime;
+                param->lin_exp_init_gain = gain;
+                param->cct = mLastCct;
+            }
+            found = true;
+            ALOGD("%s:%d get the configuration using interpolation method for %s",
+                  __FUNCTION__, __LINE__, camSensorName);
+        }
+    }
+
+    if (!found) {
+        param->lin_exp_init_time = 0.0001; // 0.1 ~ 100 ms
+        param->lin_exp_init_gain = 1; // 1 ~ 64
+        param->cct = mLastCct;
+        ALOGD("%s:%d use the default configuration for %s", __FUNCTION__,
+              __LINE__, camSensorName);
+    }
+
+exit:
+    /* TODO: restore the sampling frequence */
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT)
+        mExtLightSensor->SetSampFreq(250000);
+    if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT)
+        mExtCctSensor->SetSampFreq(250000);
     return status;
 }
 
