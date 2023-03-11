@@ -39,6 +39,7 @@ public:
     status_t start(const struct rkisp_cl_prepare_params_s& params);
     status_t stop();
     status_t setFrameParams(rkisp_cl_frame_metadata_s* frame_params);
+    status_t getWbGain(struct rkisp_cl_prepare_params_s& params);
 
 private:
     // prevent copy constructor and assignment operator

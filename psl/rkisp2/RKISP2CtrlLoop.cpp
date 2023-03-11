@@ -142,6 +142,19 @@ status_t RKISP2CtrlLoop::setFrameParams(rkisp_cl_frame_metadata_s* frame_params)
 
 }
 
+status_t RKISP2CtrlLoop::getWbGain(struct rkisp_cl_prepare_params_s& params)
+{
+    int ret = 0;
+
+    ret = rkisp_cl_get_wbgain(mControlLoopCtx, &params);
+    if (ret < 0) {
+        LOGE("%s: rkisp control loop get wb gain failed !", __FUNCTION__);
+        return UNKNOWN_ERROR;
+    }
+
+    return OK;
+}
+
 status_t RKISP2CtrlLoop::stop()
 {
     HAL_TRACE_CALL(CAM_GLBL_DBG_INFO);

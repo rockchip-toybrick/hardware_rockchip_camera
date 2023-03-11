@@ -98,6 +98,13 @@ struct rkisp_cl_prepare_params_s {
   float cct;
   // indicate whether prepare configuration is done before
   bool is_pre_config_done;
+  // indicate whether the cct varies widely
+  bool is_cct_vary_widely;
+  // wb gains
+  float rgain;
+  float grgain;
+  float gbgain;
+  float bgain;
 };
 
 /* A struct used to represent the new parameters set to CL
@@ -239,6 +246,18 @@ int rkisp_cl_stop(void* cl_ctx);
  * Returns:
  */
 void rkisp_cl_deinit(void* cl_ctx);
+
+/*
+ * Get wb gains
+ * Args:
+ *    |cl_ctx|: current CL context.
+ *    |params|: wb gain fileds to be filled in.
+ * Returns:
+ *    -EAGAIN: failed
+ *    0     : success
+ */
+int rkisp_cl_get_wbgain(void* cl_ctx,
+                        struct rkisp_cl_prepare_params_s *params);
 
 #ifdef __cplusplus
 }

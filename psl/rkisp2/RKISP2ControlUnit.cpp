@@ -788,7 +788,6 @@ RKISP2ControlUnit::init()
             std::bind(processExtSensorEvent, name, std::placeholders::_1);
             mExtLightSensor->SetEventProcessor(processFunc);
             mExtLightSensor->SetSampFreq(100000);
-            mExtLightSensor->WaitForEvent(300);
         } else {
             LOGW("@%s LightSensor not enabled!", __FUNCTION__);
         }
@@ -1202,8 +1201,41 @@ RKISP2ControlUnit::saveExposure()
     }
 
     if (conf) {
-        conf->SetAttribute("lux", std::to_string(mLastLight).c_str());
-        conf->SetAttribute("cct", std::to_string(mLastCct).c_str());
+        std::vector<int64_t> timestamps;
+        std::vector<float> event_data;
+        std::vector<int64_t> arrival_timestamps;
+
+        if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT) {
+            mExtLightSensor->GetLatestNSensorEvents(1, &timestamps,
+                                                    &event_data,
+                                                    &arrival_timestamps);
+            if (!event_data.empty()) {
+                mLastLight = event_data[0];
+                conf->SetAttribute("lux", std::to_string(mLastLight).c_str());
+            }
+        }
+        if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT) {
+            mExtCctSensor->GetLatestNSensorEvents(1, &timestamps,
+                                                  &event_data,
+                                                  &arrival_timestamps);
+            if (!event_data.empty()) {
+                mLastCct = event_data[0];
+                conf->SetAttribute("cct", std::to_string(mLastCct).c_str());
+            }
+        }
+        LOGD("light = %f, cct = %f, timens = %" PRId64 ", iso gain = %d",
+              mLastLight, mLastCct, mExposureTimens, mSensitivity);
+
+        /* Save WB gains */
+        if (mCtrlLoop->getWbGain(params) == OK) {
+            conf->SetAttribute("rgain", std::to_string(params.rgain).c_str());
+            conf->SetAttribute("grgain", std::to_string(params.grgain).c_str());
+            conf->SetAttribute("gbgain", std::to_string(params.gbgain).c_str());
+            conf->SetAttribute("bgain", std::to_string(params.bgain).c_str());
+        }
+
+        /* Save linear exposure time and gain */
+
         conf->SetAttribute("time", std::to_string((float)mExposureTimens / 1000000000).c_str());
         conf->SetAttribute("gain", std::to_string((float)mSensitivity / 100).c_str());
         ALOGD("@%s: moduleId(%d)-%s save lux=%f, cct=%f, time=%f, gain=%f.",
@@ -1585,28 +1617,6 @@ RKISP2ControlUnit::processRequestForCapture(std::shared_ptr<RKISP2RequestCtrlSta
     status = completeProcessing(reqState);
     if (status != OK)
         LOGE("Cannot complete the buffer processing - fix the bug!");
-
-    std::vector<int64_t> timestamps;
-    std::vector<float> event_data;
-    std::vector<int64_t> arrival_timestamps;
-
-    if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT) {
-        mExtLightSensor->GetLatestNSensorEvents(1, &timestamps,
-                                                &event_data,
-                                                &arrival_timestamps);
-        if (!event_data.empty())
-            mLastLight = event_data[0];
-    }
-    if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT) {
-        mExtCctSensor->GetLatestNSensorEvents(1, &timestamps,
-                                              &event_data,
-                                              &arrival_timestamps);
-        if (!event_data.empty())
-            mLastCct = event_data[0];
-    }
-
-    LOGD("light = %f, cct = %f, timens = %" PRId64 ", iso gain = %d",
-          mLastLight, mLastCct, mExposureTimens, mSensitivity);
 
     return status;
 }
@@ -2231,6 +2241,7 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
     std::vector<int64_t> arrival_timestamps;
 
     if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT) {
+        mExtLightSensor->WaitForEvent(300);
         mExtLightSensor->GetLatestNSensorEvents(1, &timestamps,
                                                 &event_data,
                                                 &arrival_timestamps);
@@ -2238,6 +2249,7 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
             mLastLight = event_data[0];
     }
     if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT) {
+        mExtCctSensor->WaitForEvent(300);
         mExtCctSensor->GetLatestNSensorEvents(1, &timestamps,
                                               &event_data,
                                               &arrival_timestamps);
@@ -2256,6 +2268,7 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
     std::vector<std::tuple<float, float, float, float>> confAttrs;
     bool found = false;
 
+    param->is_cct_vary_widely = true;
     if (lastConf.LoadFile(lastConfPath) == XML_SUCCESS) {
         root = lastConf.FirstChildElement("configurations");
 
@@ -2273,25 +2286,43 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
                     float cct = conf->Attribute("cct") ? std::stof(conf->Attribute("cct")) : 0;
                     float time = conf->Attribute("time") ? std::stof(conf->Attribute("time")) : 0;
                     float gain = conf->Attribute("gain") ? std::stof(conf->Attribute("gain")) : 0;
+                    float rgain = conf->Attribute("rgain") ? std::stof(conf->Attribute("rgain")) : 0;
+                    float grgain = conf->Attribute("grgain") ? std::stof(conf->Attribute("grgain")) : 0;
+                    float gbgain = conf->Attribute("gbgain") ? std::stof(conf->Attribute("gbgain")) : 0;
+                    float bgain = conf->Attribute("bgain") ? std::stof(conf->Attribute("bgain")) : 0;
+                    float minLight, maxLight, minCct, maxCct;
+                    float delta;
+                    bool isVaryWidely = true;
 
-                    /*
-                    * NOTE: If the brightness delta is within ±20% and the CCT delta is within ±15%,
-                    * use last exposure time and gain for initialization.
-                    */
-                    if ((((lux / mLastLight) >= 0.8f) && (lux / mLastLight) <= 1.2f) &&
-                        (((cct / mLastCct) >= 0.8f) && (cct / mLastCct) <= 1.2f)) {
+                    if (lux > 100.0f)
+                        delta = 0.2f;
+                    else
+                        delta = 1.0f;
+
+                    minLight = (lux - lux * delta);
+                    maxLight = (lux + lux * delta);
+                    minCct = (cct - cct * delta);
+                    maxCct = (cct + cct * delta);
+
+                    if (mLastLight == 0 || mLastCct == 0) {
+                        isVaryWidely = false;
+                        ALOGD("%s:%d can't get brightness or CCT", __FUNCTION__, __LINE__);
+                    } else if (((mLastLight >= minLight) && (mLastLight <= maxLight)) &&
+                               ((mLastCct >= minCct) && (mLastCct <= maxCct))) {
+                        isVaryWidely = false;
+                        ALOGD("%s:%d brightness and CCT are without variation ", __FUNCTION__, __LINE__);
+                    }
+
+                    if (!isVaryWidely) {
                         param->lin_exp_init_time = time;
                         param->lin_exp_init_gain = gain;
                         param->cct = cct;
+                        param->is_cct_vary_widely = false;
+                        param->rgain = rgain;
+                        param->grgain = grgain;
+                        param->gbgain = gbgain;
+                        param->bgain = bgain;
                         ALOGD("%s:%d use the last configuration for %s",
-                              __FUNCTION__, __LINE__, camSensorName);
-                        goto exit;
-                    } else if (((lux >= 0.0f) && (lux <= 7.0f)) &&
-                               ((mLastLight >= 0.0f) && (mLastLight <= 7.0f))) {
-                        param->lin_exp_init_time = time;
-                        param->lin_exp_init_gain = gain;
-                        param->cct = cct;
-                        ALOGD("%s:%d use the last configuration in low brightness for %s",
                               __FUNCTION__, __LINE__, camSensorName);
                         goto exit;
                     }
@@ -2431,11 +2462,6 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
     }
 
 exit:
-    /* TODO: restore the sampling frequence */
-    if (mEnvSensorEnable & HAL_ENV_SENSOR_LIGHT)
-        mExtLightSensor->SetSampFreq(250000);
-    if (mEnvSensorEnable & HAL_ENV_SENSOR_CCT)
-        mExtCctSensor->SetSampFreq(250000);
     return status;
 }
 
