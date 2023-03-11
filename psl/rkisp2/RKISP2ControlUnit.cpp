@@ -2270,7 +2270,7 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
     std::vector<std::tuple<float, float, float, float>> confAttrs;
     bool found = false;
 
-    param->is_cct_vary_widely = true;
+    param->is_wb_gains_available = false;
     if (lastConf.LoadFile(lastConfPath) == XML_SUCCESS) {
         root = lastConf.FirstChildElement("configurations");
 
@@ -2315,15 +2315,17 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
                         ALOGD("%s:%d brightness and CCT are without variation ", __FUNCTION__, __LINE__);
                     }
 
+                    /* NOTE: Always mark the wb gains available when the last record is found */
+                    param->is_wb_gains_available = true;
+                    param->rgain = rgain;
+                    param->grgain = grgain;
+                    param->gbgain = gbgain;
+                    param->bgain = bgain;
+
                     if (!isVaryWidely) {
                         param->lin_exp_init_time = time;
                         param->lin_exp_init_gain = gain;
                         param->cct = cct;
-                        param->is_cct_vary_widely = false;
-                        param->rgain = rgain;
-                        param->grgain = grgain;
-                        param->gbgain = gbgain;
-                        param->bgain = bgain;
                         ALOGD("%s:%d use the last configuration for %s",
                               __FUNCTION__, __LINE__, camSensorName);
                         goto exit;

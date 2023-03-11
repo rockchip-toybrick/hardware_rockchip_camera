@@ -98,8 +98,8 @@ struct rkisp_cl_prepare_params_s {
   float cct;
   // indicate whether prepare configuration is done before
   bool is_pre_config_done;
-  // indicate whether the cct varies widely
-  bool is_cct_vary_widely;
+  // indicate whether wb gains are available
+  bool is_wb_gains_available;
   // wb gains
   float rgain;
   float grgain;
