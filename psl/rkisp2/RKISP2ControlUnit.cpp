@@ -1100,10 +1100,11 @@ RKISP2ControlUnit::configStreams(std::vector<camera3_stream_t*> &activeStreams, 
 
         const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
         prepareParams.work_mode = cap->getAiqWorkingMode();
-        /* TODO */
-        getPreSettings(&prepareParams);
-        ALOGD("%s:%d linear exposure time = %f, gain = %f", __FUNCTION__, __LINE__,
-              prepareParams.lin_exp_init_time, prepareParams.lin_exp_init_gain);
+        if (!mIsPreConfigDone) {
+            getPreSettings(&prepareParams);
+            ALOGD("%s:%d linear exposure time = %f, gain = %f", __FUNCTION__, __LINE__,
+                  prepareParams.lin_exp_init_time, prepareParams.lin_exp_init_gain);
+        }
 
         prepareParams.is_pre_config_done = mIsPreConfigDone;
 
@@ -1201,6 +1202,7 @@ RKISP2ControlUnit::saveExposure()
     }
 
     if (conf) {
+        struct rkisp_cl_prepare_params_s params;
         std::vector<int64_t> timestamps;
         std::vector<float> event_data;
         std::vector<int64_t> arrival_timestamps;
