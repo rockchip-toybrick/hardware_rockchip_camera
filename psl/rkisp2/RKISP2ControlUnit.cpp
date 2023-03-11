@@ -797,8 +797,8 @@ RKISP2ControlUnit::init()
     // Create external cct sensor listener
     {
         mExtCctSensor = GoogSensorEnvironment::Create(EnvironmentSensorType::CCT);
-        mEnvSensorEnable |= mExtLightSensor->GetSensorEnablingStatus() << 1;
-        if (mExtLightSensor != nullptr && (mEnvSensorEnable & HAL_ENV_SENSOR_CCT)) {
+        mEnvSensorEnable |= mExtCctSensor->GetSensorEnablingStatus() << 1;
+        if (mExtCctSensor != nullptr && (mEnvSensorEnable & HAL_ENV_SENSOR_CCT)) {
             const char *name = mExtCctSensor->GetSensorName();
             LOGD("@%s CCT SensorName(%s)", __FUNCTION__, name);
             std::function<void(const ExtendedSensorEvent& event)> processFunc =
@@ -996,7 +996,12 @@ RKISP2ControlUnit::~RKISP2ControlUnit()
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
 
     mSettingsHistory.clear();
-    saveExposure();
+    if (mExposureTimens == 1000) {
+        LOGE("@%s: invalid exposure time", __FUNCTION__);
+    } else {
+        saveExposure();
+    }
+
     requestExitAndWait();
 
     if (mMessageThread != nullptr) {
@@ -1234,15 +1239,18 @@ RKISP2ControlUnit::saveExposure()
             conf->SetAttribute("grgain", std::to_string(params.grgain).c_str());
             conf->SetAttribute("gbgain", std::to_string(params.gbgain).c_str());
             conf->SetAttribute("bgain", std::to_string(params.bgain).c_str());
+            ALOGD("@%s: moduleId(%s)-%s save rgain=%f, grgain=%f, gbgain=%f, bgain=%f.",
+                 __FUNCTION__, camModuleId, camSensorName, params.rgain, params.grgain,
+                 params.gbgain, params.bgain);
         }
 
         /* Save linear exposure time and gain */
 
         conf->SetAttribute("time", std::to_string((float)mExposureTimens / 1000000000).c_str());
         conf->SetAttribute("gain", std::to_string((float)mSensitivity / 100).c_str());
-        ALOGD("@%s: moduleId(%d)-%s save lux=%f, cct=%f, time=%f, gain=%f.",
+        ALOGD("@%s: moduleId(%s)-%s save lux=%f, cct=%f, time=%f, gain=%f.",
              __FUNCTION__, camModuleId, camSensorName, mLastLight, mLastCct,
-             (float)mExposureTimens / 1000000000, mSensitivity / 100);
+             (float)mExposureTimens / 1000000000, (float)mSensitivity / 100);
 
         lastConf.SaveFile(lastConfPath);
     } else {
