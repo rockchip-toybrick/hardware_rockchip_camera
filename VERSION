@@ -125,3 +125,10 @@ V3.1.0
     - rkisp2: qbuf before stream on.
     - rkisp2: frameworker qbuf after request done.
     - rkisp2: fix low resolution take pic abnormal.
+V3.2.0
+    - rkisp2: Add support for external light sensor listener.
+    - rkisp2: add support for setting wb gain.
+    - rkisp2: fix duplicated get pre-settings flow.
+    - rkisp2: prefer the last wb gains if available.
+    - rkisp2: fix save wrong exposure time.
+
