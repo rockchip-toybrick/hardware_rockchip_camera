@@ -228,7 +228,7 @@ status_t JpegMakerCore::processJpegSettings(ImgEncoderCore::EncodePackage & pack
     tag = ANDROID_JPEG_ORIENTATION;
     entry = settings->find(tag);
     if (entry.count == 1) {
-       metaData.mJpegSetting.orientation = entry.data.i32[0];
+       metaData.mJpegSetting.orientation = 0/*entry.data.i32[0]*/;
     }
 
     LOGI("jpegQuality=%d,thumbQuality=%d,thumbW=%d,thumbH=%d,orientation=%d",

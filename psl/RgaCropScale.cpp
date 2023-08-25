@@ -113,10 +113,10 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
         int zoom_top_offset = in->offset_y,zoom_left_offset = in->offset_x;
         switch (in->rotation) {
             case 90:
-                src.rotation = DRM_RGA_TRANSFORM_ROT_270;
+                src.rotation = DRM_RGA_TRANSFORM_ROT_90;
                 ratio = out->width * 1000 / out->height;
                 zoom_cropH = in->height & (~0x01);
-                zoom_cropW = (in->height * 1000 / ratio) & (~0x01);
+                zoom_cropW = in->width & (~0x01);
                 zoom_left_offset=((in->width-zoom_cropW)>>1) & (~0x01);
                 zoom_top_offset=((in->height-zoom_cropH)>>1) & (~0x01);
                 in->width = zoom_cropW;
@@ -128,10 +128,10 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
                 src.rotation = DRM_RGA_TRANSFORM_ROT_180;
                 break;
             case 270:
-                src.rotation = DRM_RGA_TRANSFORM_ROT_90;
+                src.rotation = DRM_RGA_TRANSFORM_ROT_270;
                 ratio = out->width * 1000 / out->height;
                 zoom_cropH = in->height & (~0x01);
-                zoom_cropW = (in->height * 1000 / ratio) & (~0x01);
+                zoom_cropW = in->width & (~0x01);
                 zoom_left_offset=((in->width-zoom_cropW)>>1) & (~0x01);
                 zoom_top_offset=((in->height-zoom_cropH)>>1) & (~0x01);
                 in->width = zoom_cropW;
@@ -182,12 +182,16 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
 		     out->height_stride,
 		     out->fmt);
     if (in->mirror) {
-        src.rotation |= DRM_RGA_TRANSFORM_FLIP_H;
+        src.rotation |= src.rotation ?
+				DRM_RGA_TRANSFORM_FLIP_H << 4 :
+				DRM_RGA_TRANSFORM_FLIP_H;
         LOGD("---zc rga mirror====");
     }
     if (in->flip) {
         LOGD("---zc rga flip=====");
-        src.rotation |= DRM_RGA_TRANSFORM_FLIP_V;
+        src.rotation |= src.rotation ?
+				DRM_RGA_TRANSFORM_FLIP_V << 4 :
+				DRM_RGA_TRANSFORM_FLIP_V;
     }
 
 
