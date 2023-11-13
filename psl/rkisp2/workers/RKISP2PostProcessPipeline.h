@@ -132,13 +132,6 @@ class IPostProcessSource {
     std::vector<RKISP2IPostProcessListener*> mListeners;
 };
 
-class IBufferDone {
-public:
-    IBufferDone() {}
-    virtual ~IBufferDone() {}
-    virtual status_t bufferDone(const int64_t reqId);
-};
-
 /*
  * some process units such as field composing need one
  * more than input frames.
@@ -237,7 +230,6 @@ class RKISP2PostProcessUnit : public RKISP2IPostProcessListener,
     virtual status_t processEptzFrame(const std::shared_ptr<PostProcBuffer>& buf);
     #endif
     std::shared_ptr<RKISP2FecUnit> mFecUnit;
-    IBufferDone *mBufferDone;
 
  private:
     /*disable copy constructor and assignment*/
@@ -445,7 +437,6 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
      * |listener| specifies where the processed buffer will be output.
      */
     RKISP2PostProcessPipeline(RKISP2IPostProcessListener* listener, int camid);
-    RKISP2PostProcessPipeline(RKISP2IPostProcessListener* listener,IBufferDone *bufferListener, int camid);
     ~RKISP2PostProcessPipeline();
     /* construt the pipeline*/
     status_t prepare(const FrameInfo& in,
@@ -471,7 +462,6 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
     int getCameraId() { return mCameraId; };
     camera3_stream_t* getStreamByType(int stream_type);
     bool mIsNeedcached;
-    IBufferDone *mBufferListener;
 
  private:
     virtual void messageThreadLoop(void);
