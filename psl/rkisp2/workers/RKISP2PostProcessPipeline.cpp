@@ -1662,7 +1662,12 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
     status = mJpegTask->handleMessageSettings(*procsettings.get());
     CheckError((status != OK), status, "@%s, set settings failed! [%d]!",
                __FUNCTION__, status);
+
+#ifdef RK_HW_JPEG_MIRROR_ROTATE
     status = convertJpeg(tempBuf->cambuf, outBuf->cambuf, outBuf->request);
+#else
+    status = convertJpeg(inbuf->cambuf, outBuf->cambuf, outBuf->request);
+#endif
     //caputre buffer already done with holding release fence, now signal
     //the release fence. In normal case, capture done should be called in
     //OutputFrameWorker::notifyNewFrame, but in order to speed up capture
