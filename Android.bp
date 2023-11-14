@@ -7,7 +7,14 @@ cc_prebuilt_binary {
     strip: {
         none: true,
     },
-    srcs: ["etc/tools/media-ctl"],
+    arch: {
+        arm64: {
+            srcs: ["etc/tools/arm64/media-ctl"],
+        },
+        arm: {
+            srcs: ["etc/tools/arm/media-ctl"],
+        },
+    },
 }
 cc_prebuilt_binary {
     name: "v4l2-ctl",
@@ -18,5 +25,12 @@ cc_prebuilt_binary {
     strip: {
         none: true,
     },
-    srcs: ["etc/tools/v4l2-ctl"],
+    arch: {
+        arm64: {
+            srcs: ["etc/tools/arm64/v4l2-ctl"],
+        },
+        arm: {
+            srcs: ["etc/tools/arm/v4l2-ctl"],
+        },
+    },
 }
