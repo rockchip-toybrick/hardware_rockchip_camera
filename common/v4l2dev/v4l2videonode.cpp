@@ -1444,12 +1444,6 @@ int V4L2VideoNode::requestBuffers(size_t num_buffers, int memType)
     if (req_buf.count < num_buffers)
         LOGW("Got less buffers than requested! %u < %zu",req_buf.count, num_buffers);
 
-    mFrameCounter = -1;
-    if(num_buffers == 0){
-        mBuffersInDevice = 0;
-    }
-    LOGD("%s mFrameCounter:%d",__FUNCTION__,mFrameCounter);
-
     return req_buf.count;
 }
 
@@ -1475,7 +1469,6 @@ int V4L2VideoNode::qbuf(V4L2BufferInfo *buf)
 {
     int ret = 0;
 
-    LOGD("%s mFrameCounter:%d , buf->vbuffer.index():%d",__FUNCTION__,mFrameCounter,buf->vbuffer.index());
     PERFORMANCE_ATRACE_NAME_SNPRINTF("VIDIOC_QBUF - %s", mName.c_str());
 
     buf->vbuffer.setFlags(buf->cache_flags);
@@ -1505,7 +1498,6 @@ int V4L2VideoNode::dqbuf(V4L2BufferInfo *buf)
     v4l2_buf.setType(mBufType);
 
     vbuf = v4l2_buf.get();
-    LOGD("VIDIOC_DQBUF begin!");
     ret = pioctl(mFd, VIDIOC_DQBUF, vbuf, mName.c_str());
     if (ret < 0) {
         if (errno != EAGAIN)

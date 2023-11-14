@@ -42,16 +42,16 @@ RKISP2OutputFrameWorker::RKISP2OutputFrameWorker(int cameraId, std::string name,
                 mPostProcItemsPool("PostBufPool")
 {
     LOGI("@%s, name:%s instance:%p, cameraId:%d", __FUNCTION__, name.data(), this, cameraId);
-//    mPostProcItemsPool.init(mPipelineDepth, PostProcBuffer::reset);
-//    for (size_t i = 0; i < mPipelineDepth; i++)
-//    {
-//        std::shared_ptr<PostProcBuffer> buffer= nullptr;
-//        mPostProcItemsPool.acquireItem(buffer);
-//        if (buffer.get() == nullptr) {
-//            LOGE("No memory, fix me!");
-//        }
-//        buffer->index = i;
-//    }
+    mPostProcItemsPool.init(mPipelineDepth, PostProcBuffer::reset);
+    for (size_t i = 0; i < mPipelineDepth; i++)
+    {
+        std::shared_ptr<PostProcBuffer> buffer= nullptr;
+        mPostProcItemsPool.acquireItem(buffer);
+        if (buffer.get() == nullptr) {
+            LOGE("No memory, fix me!");
+        }
+        buffer->index = i;
+    }
 }
 
 RKISP2OutputFrameWorker::~RKISP2OutputFrameWorker()
@@ -212,9 +212,15 @@ status_t RKISP2OutputFrameWorker::prepareRun(std::shared_ptr<DeviceMessage> msg)
     Camera3Request* request = mMsg->cbMetadataMsg.request;
     request->setSequenceId(-1);
 
-    LOGD("%s %s  request->getId():%d.",__FUNCTION__,mName.c_str(),request->getId());
-
+    std::shared_ptr<PostProcBuffer> postbuffer= nullptr;
+    if (mPostProcItemsPool.acquireItem(postbuffer)) {
+        LOGE("%s: %p no avl buffer now!", __FUNCTION__, this);
+        status = UNKNOWN_ERROR;
+        goto exit;
+    }
+    mIndex = postbuffer->index;
     buffer = findBuffer(request, mStream);
+    mOutputBuffers[mIndex] = nullptr;
     if (buffer.get()) {
         // Work for mStream
         status = prepareBuffer(buffer);
@@ -234,6 +240,7 @@ status_t RKISP2OutputFrameWorker::prepareRun(std::shared_ptr<DeviceMessage> msg)
             goto exit;
         }
 
+        mOutputBuffers[mIndex] = buffer;
         mPollMe = true;
     } else if (checkListenerBuffer(request)) {
         // Work for listeners
@@ -290,9 +297,13 @@ status_t RKISP2OutputFrameWorker::prepareRun(std::shared_ptr<DeviceMessage> msg)
             status = BAD_VALUE;
             goto exit;
         }
+        postbuffer->cambuf = buffer;
     } else {
+        postbuffer->cambuf = mCameraBuffers[mIndex];
     }
     LOGD("%s: %s, requestId(%d), index(%d)", __FUNCTION__, mName.c_str(), request->getId(), mIndex);
+    status |= mNode->putFrame(mBuffers[mIndex]);
+    mPostWorkingBufs[mIndex]= postbuffer;
 
 exit:
     if (status < 0)
@@ -365,14 +376,8 @@ status_t RKISP2OutputFrameWorker::run()
         if (request->sequenceId() < sequence)
             request->setSequenceId(sequence);
 
-        index =  outBuf.vbuffer.index();
-        mNode->putFrame(mBuffers[index]);
-
-        mPostWorkingBuf  =  std::make_shared<PostProcBuffer> ();
-        std::shared_ptr<CameraBuffer> buffer = findBuffer(request, mStream);
-        mOutputBuffer = buffer;
-        mPostWorkingBuf->request = request;
-        mPostWorkingBuf->cambuf =  mCameraBuffers[index];
+        index = outBuf.vbuffer.index();
+        mPostWorkingBuf = mPostWorkingBufs[index];
         std::string s(mNode->name());
         // node name is "/dev/videox", substr is videox
         std::string substr = s.substr(5,10);
@@ -393,6 +398,10 @@ status_t RKISP2OutputFrameWorker::run()
             }
         status = UNKNOWN_ERROR;
     }
+
+    mOutputBuffer = mOutputBuffers[index];
+    mOutputBuffers[index] = nullptr;
+    mPostWorkingBufs[index] = nullptr;
 
     ICaptureEventListener::CaptureMessage outMsg;
     outMsg.data.event.reqId = request->getId();

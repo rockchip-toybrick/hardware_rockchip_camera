@@ -193,7 +193,6 @@ status_t RKISP2FrameWorker::allocateWorkerBuffers()
                 prot = PROT_READ | PROT_WRITE;
             else
                 prot = PROT_READ;
-            mNode->putFrame(i);
             buf = std::make_shared<CameraBuffer>(mFormat.width(),
                 mFormat.height(),
                 mFormat.bytesperline(),
