@@ -27,7 +27,7 @@ namespace android {
 namespace camera2 {
 namespace rkisp2 {
 
-class RKISP2OutputFrameWorker: public RKISP2FrameWorker, public RKISP2ICaptureEventSource, public RKISP2IPostProcessListener,public IBufferDone
+class RKISP2OutputFrameWorker: public RKISP2FrameWorker, public RKISP2ICaptureEventSource, public RKISP2IPostProcessListener
 {
 public:
     RKISP2OutputFrameWorker(int cameraId, std::string name,
@@ -47,7 +47,6 @@ public:
     status_t notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
                             const std::shared_ptr<RKISP2ProcUnitSettings>& settings,
                             int err);
-    status_t bufferDone(int64_t reqId);
 
 private:
     std::shared_ptr<CameraBuffer> findBuffer(Camera3Request* request,
@@ -65,8 +64,6 @@ private:
     bool mNeedPostProcess;
     NodeTypes mNodeName;
     int mLastPipelineDepth;
-    std::mutex mIndexMutex;
-    std::unordered_map<int64_t, int> mRequestIndexMap;
 
     // For listeners
     std::vector<camera3_stream_t*> mListeners;

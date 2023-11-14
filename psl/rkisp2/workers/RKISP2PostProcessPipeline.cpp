@@ -61,9 +61,6 @@ IPostProcessSource::notifyListeners(const std::shared_ptr<PostProcBuffer>& buf,
                                     int err) {
     LOGD("@%s", __FUNCTION__);
 
-    LOGD("@%s(%d), reqId: %d dmaBufFd:%d",
-          __FUNCTION__,__LINE__, settings->request->getId(),buf->cambuf->dmaBufFd());
-
     status_t status = OK;
     std::lock_guard<std::mutex> l(mListenersLock);
     for (auto &listener : mListeners) {
@@ -363,11 +360,9 @@ RKISP2PostProcessUnit::relayToNextProcUnit(int err) {
     LOGD("%s: @%s ", mName, __FUNCTION__);
     status_t status = OK;
 
-    int64_t reqId = mCurProcSettings->request->getId();
     if (err == STATUS_NEED_NEXT_INPUT_FRAME) {
         mCurPostProcBufIn.reset();
         mCurProcSettings.reset();
-        LOGD("@%s(%d) reqId:%d STATUS_NEED_NEXT_INPUT_FRAME",__FUNCTION__,__LINE__,mCurProcSettings->request->getId());
         return err;
     }
 
@@ -380,12 +375,6 @@ RKISP2PostProcessUnit::relayToNextProcUnit(int err) {
                                  mCurProcSettings, err);
     else
         LOGW("%s: %s drop the input frame !", __FUNCTION__, mName);
-
-    LOGD("%s(%d) 0:%d done err:%d",__FUNCTION__,__LINE__,reqId,err);
-    if(err == 0){
-        mPipeline->mBufferListener->bufferDone(reqId);
-    }
-
     mCurPostProcBufOut.reset();
     mCurPostProcBufIn.reset();
     mCurProcSettings.reset();
@@ -442,8 +431,6 @@ status_t RKISP2PostProcessUnit::notifyNewFrame(const std::shared_ptr<PostProcBuf
                                          const std::shared_ptr<RKISP2ProcUnitSettings>& settings,
                                          int err) {
     LOGD("%s: @%s, mInBufferPool size:%d", mName, __FUNCTION__, mInBufferPool.size() + 1);
-    LOGD("%s: @%s, reqId: %d dmaBufFd:%d",
-         mName, __FUNCTION__, settings->request->getId(),buf->cambuf->dmaBufFd());
 
     std::unique_lock<std::mutex> l(mApiLock, std::defer_lock);
 
@@ -478,9 +465,8 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                               const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
     PERFORMANCE_ATRACE_CALL();
 
-    LOGD("%s: @%s, reqId: %d dmaBufFd:%d",
-         mName, __FUNCTION__, settings->request->getId(),in->cambuf->dmaBufFd());
-
+    LOGD("%s: @%s, reqId: %d",
+         mName, __FUNCTION__, settings->request->getId());
     status_t status = OK;
     bool mirror = false;
 #ifdef MIRROR_HANDLING_FOR_FRONT_CAMERA
@@ -678,21 +664,6 @@ RKISP2PostProcessPipeline::RKISP2PostProcessPipeline(RKISP2IPostProcessListener*
     mMayNeedSyncStreamsOutput(false),
     mOutputBuffersHandler(new OutputBuffersHandler(this)) {
 
-    mMessageThread = std::unique_ptr<MessageThread>(new MessageThread(this, "PPThread"));
-    mMessageThread->run();
-}
-
-RKISP2PostProcessPipeline::RKISP2PostProcessPipeline(RKISP2IPostProcessListener* listener,IBufferDone *bufferListener,
-                                         int camid) :
-    mPostProcFrameListener(listener),
-    mCameraId(camid),
-    mThreadRunning(false),
-    mMessageQueue("PPThread", static_cast<int>(MESSAGE_ID_MAX)),
-    mMessageThread(nullptr),
-    mMayNeedSyncStreamsOutput(false),
-    mOutputBuffersHandler(new OutputBuffersHandler(this)) {
-    mIsNeedcached = false;
-    mBufferListener = bufferListener;
     mMessageThread = std::unique_ptr<MessageThread>(new MessageThread(this, "PPThread"));
     mMessageThread->run();
 }
@@ -1122,12 +1093,6 @@ RKISP2PostProcessPipeline::processFrame(const std::shared_ptr<PostProcBuffer>& i
                                   const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
     status_t status = OK;
 
-    LOGD("@%s in dmaBufFd:%d, out size:%d",__FUNCTION__,in->cambuf->dmaBufFd(),out.size());
-    if(out.size() == 0){
-        mBufferListener->bufferDone(settings->request->getId());
-        return status;
-    }
-
     Message msg;
     msg.id = MESSAGE_ID_PROCESSFRAME;
 
@@ -1343,10 +1308,8 @@ RKISP2PostProcessPipeline::handleProcessFrame(Message &msg)
 //    LOGE("rk-debug: ======== pid=%d", syscall(SYS_gettid));
     mOutputBuffersHandler->addSyncBuffersIfNeed(msg.processMsg.in, msg.processMsg.out);
     // send |in| to each first level process unit
-    for (auto iter : mPostProcUnitArray[kFirstLevel]) {
+    for (auto iter : mPostProcUnitArray[kFirstLevel])
         status |= iter->notifyNewFrame(msg.processMsg.in, msg.processMsg.settings, 0);
-        LOGD("%s(%d) in dmaBufFd:% reqId:%d",__FUNCTION__,__LINE__,msg.processMsg.in->cambuf->dmaBufFd(),msg.processMsg.settings->request->getId());
-    }
     return status;
 }
 
@@ -1374,8 +1337,6 @@ notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
                int err) {
 
     status_t status = OK;
-
-    LOGD("%s(%d) in dmaBufFd:%d reqId:%d",__FUNCTION__,__LINE__,buf->cambuf->dmaBufFd(),settings->request->getId());
     std::map<CameraBuffer*, std::shared_ptr<syncItem>>::iterator it;
 
     if (!mPipeline->mMayNeedSyncStreamsOutput)
@@ -1408,7 +1369,6 @@ addSyncBuffersIfNeed(const std::shared_ptr<PostProcBuffer>& in,
         in->cambuf->getBufferHandle() != nullptr) {
         bool need_sync = false;
 
-        LOGD("%s(%d) in dmaBufFd:%d",__FUNCTION__,__LINE__,in->cambuf->dmaBufFd());
         for (auto iter : out) {
             if (iter->cambuf.get() == in->cambuf.get())
                 need_sync = true;

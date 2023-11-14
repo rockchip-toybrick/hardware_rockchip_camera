@@ -38,7 +38,7 @@ RKISP2OutputFrameWorker::RKISP2OutputFrameWorker(int cameraId, std::string name,
                 mNeedPostProcess(false),
                 mNodeName(nodeName),
                 mLastPipelineDepth(pipelineDepth),
-                mPostPipeline(new RKISP2PostProcessPipeline(this, this, cameraId)),
+                mPostPipeline(new RKISP2PostProcessPipeline(this, cameraId)),
                 mPostProcItemsPool("PostBufPool")
 {
     LOGI("@%s, name:%s instance:%p, cameraId:%d", __FUNCTION__, name.data(), this, cameraId);
@@ -342,21 +342,6 @@ status_t RKISP2OutputFrameWorker::skipBadFrames(int skipFrames)
     return ret;
 }
 
-status_t RKISP2OutputFrameWorker::bufferDone(int64_t reqId){
-    status_t status = NO_ERROR;
-    LOGD("qiujian %s(%d) %s  reqId:%d",__FUNCTION__,__LINE__, mName.data(),reqId);
-    std::lock_guard<std::mutex> l(mIndexMutex);
-    if(mRequestIndexMap.count(reqId)){
-        int index = mRequestIndexMap[reqId];
-        if(index!= -1){
-            mNode->putFrame(mBuffers[index]);
-            LOGD("qiujian %s(%d) putFrame  reqId:%d",__FUNCTION__,__LINE__, reqId);
-        }
-        mRequestIndexMap.erase(reqId);
-    }
-    return status;
-}
-
 status_t RKISP2OutputFrameWorker::run()
 {
     status_t status = NO_ERROR;
@@ -381,17 +366,11 @@ status_t RKISP2OutputFrameWorker::run()
             request->setSequenceId(sequence);
 
         index =  outBuf.vbuffer.index();
-
+        mNode->putFrame(mBuffers[index]);
 
         mPostWorkingBuf  =  std::make_shared<PostProcBuffer> ();
         std::shared_ptr<CameraBuffer> buffer = findBuffer(request, mStream);
         mOutputBuffer = buffer;
-        {
-            std::lock_guard<std::mutex> l(mIndexMutex);
-            mRequestIndexMap[request->getId()] = index;
-        }
-        LOGD("%s:@%s(%d) reqId:%d dmaBufFd:%d",mName.data(),__FUNCTION__,__LINE__,request->getId(),mCameraBuffers[index]->dmaBufFd());
-
         mPostWorkingBuf->request = request;
         mPostWorkingBuf->cambuf =  mCameraBuffers[index];
         std::string s(mNode->name());
