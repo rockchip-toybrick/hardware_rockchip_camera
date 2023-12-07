@@ -78,7 +78,8 @@ status_t RKISP2FrameWorker::startWorker(int initialSkips)
 
     ALOGI("@%s enter, %s, skipFrames: %d.", __FUNCTION__, mName.c_str(), initialSkips);
     if (mNode->getBufsInDeviceCount() == 0) {
-        LOGE("@%s: devices: %s, mBuffersInDevice is 0, can't skip!", __FUNCTION__, mName.c_str());
+        LOGE("@%s: devices: %s, mBuffersInDevice is 0, just sleep to skip!", __FUNCTION__, mName.c_str());
+        //usleep(initialSkips * 40 * 1000);
         return NO_ERROR;
     }
 
