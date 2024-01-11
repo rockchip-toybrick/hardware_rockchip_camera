@@ -2466,7 +2466,19 @@ status_t RKISP2GraphConfig::getSensorMediaCtlConfig(int32_t cameraId,
                                           int32_t testPatternMode,
                                           MediaCtlConfig *mediaCtlConfig) {
     status_t ret = OK;
+    bool isSensorInIspMedia = false;
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
+
+    struct media_device_info info {};
+    ret = mMediaCtl->getMediaDevInfo(info);
+    if (ret != OK) {
+        LOGE("@%s : Can't get MediaDevice Info for cam %d", __FUNCTION__, cameraId);
+        return UNKNOWN_ERROR;
+    }
+
+    if (std::string(info.model).find("rkisp") != std::string::npos) {
+        isSensorInIspMedia = true;
+    }
 
     string sensorEntityName = "none";
     ret = PlatformData::getCameraHWInfo()->getSensorEntityName(cameraId, sensorEntityName);
@@ -2493,14 +2505,15 @@ status_t RKISP2GraphConfig::getSensorMediaCtlConfig(int32_t cameraId,
         struct media_entity_desc entityDesc;
         mMediaCtl->findMediaEntityById(pad->entity, entityDesc);
         string name = entityDesc.name;
+        std::shared_ptr<MediaEntity> phyEntity = nullptr;
         // check if mipi or DVP interface
-        if (name.find("cif") != std::string::npos)
+        if (!isSensorInIspMedia && name.find("cif") != std::string::npos) {
             mSensorLinkedToCIF = true;
-        if (name.find("dphy") != std::string::npos) {
+        }
+        if (isSensorInIspMedia || name.find("dphy") != std::string::npos) {
             mIsMipiInterface = true;
             mSnsLinkedPhyEntNm = name;
             //check sensor->mipi->cif case
-            std::shared_ptr<MediaEntity> phyEntity = nullptr;
             ret = mMediaCtl->getMediaEntity(phyEntity, name.c_str());
             CheckError(ret != NO_ERROR, UNKNOWN_ERROR, "@%s,  failed to get csi(%s) MediaEntity",
                            __FUNCTION__, name.c_str());
@@ -2513,6 +2526,23 @@ status_t RKISP2GraphConfig::getSensorMediaCtlConfig(int32_t cameraId,
         //if it's mipi interface, the nextEntity is mipi_dphy
         //if it's dvp interface, the nextEntity is isp
         addLinkParams(sensorEntityName, links[0].source.index, name, links[0].sink.index, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+        if (isSensorInIspMedia) {
+            std::vector<media_link_desc> links1;
+            std::shared_ptr<MediaEntity> ispEntity = nullptr;
+            phyEntity->getLinkDesc(links1);
+            if (links1.size()) {
+                struct media_pad_desc *pad1 = &links1[0].sink;
+                struct media_entity_desc entityDesc1;
+                mMediaCtl->findMediaEntityById(pad1->entity, entityDesc1);
+                string name1 = entityDesc1.name;
+                string phyName1 = name;
+                ret = mMediaCtl->getMediaEntity(ispEntity, name1.c_str());
+                CheckError(ret != NO_ERROR, UNKNOWN_ERROR,
+                           "@%s,  failed to get isp(%s) MediaEntity",
+                           __FUNCTION__, name1.c_str());
+                addLinkParams(phyName1, links1[0].source.index, name1, links1[0].sink.index, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            }
+        }
 
         int width, height;
         uint32_t format;
@@ -2575,6 +2605,7 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
     string fbcpathName = "none";
     string scaleName = "none";
     string iqtoolName = "none";
+    string rawrd1_l_Name= "none";
     std::vector<std::string> elementNames;
     PlatformData::getCameraHWInfo()->getMediaCtlElementNames(elementNames);
     struct v4l2_dv_timings timings;
@@ -2592,6 +2623,8 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
         if (it.find("mipi-csi") != std::string::npos)
             mipName2 = it;
         if (it.find("cif_mipi") != std::string::npos)
+            cif_mipiName = it;
+        if (it.find("cif-mipi") != std::string::npos)
             cif_mipiName = it;
         if (it.find("csi-subdev") != std::string::npos)
             csiName = it;
@@ -2622,6 +2655,8 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
             scaleName = it;
         if (it.find("iqtool") != std::string::npos)
             iqtoolName = it;
+        if (it.find("rkisp_rawrd1_l") != std::string::npos)
+            rawrd1_l_Name = it;
     }
     LOGD("%s: mipName = %s", __FUNCTION__, mipName.c_str());
     LOGD("%s: mipName2 = %s", __FUNCTION__, mipName2.c_str());
@@ -2635,6 +2670,7 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
     LOGD("%s: fbcpathName = %s", __FUNCTION__, fbcpathName.c_str());
     LOGD("%s: scaleName = %s", __FUNCTION__, scaleName.c_str());
     LOGD("%s: iqtoolName = %s", __FUNCTION__, iqtoolName.c_str());
+    LOGD("%s: rawrd1_l_Name = %s", __FUNCTION__, rawrd1_l_Name.c_str());
 
     int ispOutWidth, ispInWidth ,ispOutHeight, ispInHeight;
     uint32_t ispOutFormat ,ispInFormat, videoOutFormat;
@@ -2664,7 +2700,7 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
         if (ret != OK) {
             LOGE("Cannot get media device information.");
         }
-        LOGE("getMediaDevInfo info.model:%s",info.model);
+        LOGD("getMediaDevInfo info.model:%s",info.model);
         //rk356x dual raw camera
         if ((fbcpathName.find("fbcpath") == std::string::npos) && (std::string(info.model).find("lvds")!= std::string::npos) &&
             (mipName.find("dphy") != std::string::npos) && (mipName2.find("mipi") != std::string::npos) && (aFormat.format.code >= MEDIA_BUS_FMT_SBGGR8_1X8) &&
@@ -2723,6 +2759,19 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
                 addLinkParams(mipName2, 3, "stream_cif_mipi_id2", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
                 addLinkParams(mipName2, 4, "stream_cif_mipi_id3", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
                 mSensorLinkedToCIF = true;
+        } else if (((mSnsLinkedPhyEntNm.find("rkcif-mipi-lvds") != std::string::npos)
+                   && (std::string(info.model).find("isp") != std::string::npos))
+                   || ((mSnsLinkedPhyEntNm.find("rkcif_mipi_lvds") != std::string::npos)
+                   && (std::string(info.model).find("isp") != std::string::npos))) {
+            addLinkParams("rkisp_rawrd2_s", 0, "rkisp-isp-subdev", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            addLinkParams("rkisp_rawrd0_m", 0, "rkisp-isp-subdev", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            if (rawrd1_l_Name.find("rkisp_rawrd1_l") != std::string::npos) {
+                addLinkParams("rkisp_rawrd1_l", 0, "rkisp-isp-subdev", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            }
+
+            addLinkParams("rkisp-isp-subdev", 2, "rkisp_mainpath", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            addLinkParams("rkisp-isp-subdev", 2, "rkisp_selfpath", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
+            addLinkParams("rkisp-isp-subdev", 2, "rkisp_iqtool", 0, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
         } else {
             addLinkParams(mipName, mipSrcPad, csiName, csiSinkPad, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
             addLinkParams(csiName, csiSrcPad, IspName, ispSinkPad, 1, MEDIA_LNK_FL_ENABLED, mediaCtlConfig);
