@@ -193,8 +193,8 @@ status_t ImgHWEncoder::encodeSync(EncodePackage & package)
     int  jpegh = height;
     int outJPEGSize = destBuf->size();
 
-    int quality = exifMeta->mJpegSetting.jpegQuality;
-    int thumbquality = exifMeta->mJpegSetting.jpegThumbnailQuality;
+    int quality = exifMeta->mJpegSetting.jpegQuality > 99 ? 99 : exifMeta->mJpegSetting.jpegQuality;
+    int thumbquality = exifMeta->mJpegSetting.jpegThumbnailQuality > 99 ? 99 : exifMeta->mJpegSetting.jpegThumbnailQuality;
 
     LOGI("@%s %d: in buffer fd:%d, vir_addr:%p, out buffer fd:%d, vir_addr:%p", __FUNCTION__, __LINE__,
          srcBuf->dmaBufFd(), srcBuf->data(),
@@ -212,8 +212,7 @@ status_t ImgHWEncoder::encodeSync(EncodePackage & package)
     encInInfo.width = jpegw;
     encInInfo.height = jpegh;
     encInInfo.format = MpiJpegEncoder::INPUT_FMT_YUV420SP;
-    encInInfo.qLvl = 80;
-    encInInfo.thumbQLvl = 80;
+    encInInfo.qLvl = quality <= 0 ? 80 : quality;
     // if not doThumb,please set doThumbNail,thumbW and thumbH to zero;
     if (exifMeta->mJpegSetting.thumbWidth && exifMeta->mJpegSetting.thumbHeight)
         encInInfo.doThumbNail = 1;
@@ -223,7 +222,7 @@ status_t ImgHWEncoder::encodeSync(EncodePackage & package)
          exifAttrs->enableThumb, encInInfo.doThumbNail);
     encInInfo.thumbWidth = exifMeta->mJpegSetting.thumbWidth;
     encInInfo.thumbHeight = exifMeta->mJpegSetting.thumbHeight;
-    encInInfo.thumbQLvl = thumbquality;
+    encInInfo.thumbQLvl = thumbquality <= 0 ? 80 : thumbquality;
 
     fillRkExifInfo(mExifInfo, exifAttrs);
     mExifInfo.InputWidth = jpegw;
