@@ -1537,6 +1537,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
          mName, __FUNCTION__, procsettings->request->getId());
 
     inbuf->cambuf->dumpImage(CAMERA_DUMP_JPEG, "before_jpeg_converion_nv12");
+#ifdef RK_HW_JPEG_MIRROR_ROTATE
     bool isFront = PlatformData::facing(mPipeline->getCameraId()) == CAMERA_FACING_FRONT;
     bool flip = false;
     bool mirror = false;
@@ -1544,26 +1545,40 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
     int width = in->cambuf->width();
     int height = in->cambuf->height();
     char value[128];
-    property_get("sys.camera.front_mirror_enable", value, "0");
-    int isFrontMirrorEnable = atoi(value);
-    LOGE("PostProcessUnitJpegEnc isFrontMirrorEnable:%d", isFrontMirrorEnable);
-    if (isFront && isFrontMirrorEnable) {
+    //sys.camera.mirror_flip : 0 off, 1 mirror, 2 flip
+    property_get("sys.camera.mirror_flip", value, "0");
+    int mirrorFlipValue = atoi(value);
+    if (mirrorFlipValue == 1) {
         mirror = true;
-        flip = false;
+    } else if (mirrorFlipValue == 2) {
+        flip = true;
     }
-    LOGE("PostProcessUnitJpegEnc jpeg mirror:%d flip:%d", mirror, flip);
-    const CameraMetadata *partRes = settings->request->getAndWaitforFilledResults(CONTROL_UNIT_PARTIAL_RESULT);
-    camera_metadata_ro_entry_t entry_orientation = partRes->find(ANDROID_JPEG_ORIENTATION);
-    if (entry_orientation.count == 1) {
-        rotation = *entry_orientation.data.i32;
-        LOGE("PostProcessUnitJpegEnc rotation:%d", rotation);
-    } else {
-        LOGE("No ANDROID_JPEG_ORIENTATION in results for EXIF");
-    }
+    property_get("sys.camera.rotation", value, "0");
+    rotation = atoi(value);
     if (rotation % 180 != 0) {
         width = in->cambuf->height();
         height = in->cambuf->width();
     }
+    const CameraMetadata *partRes = settings->request->getAndWaitforFilledResults(CONTROL_UNIT_PARTIAL_RESULT);
+    camera_metadata_ro_entry_t entry_orientation = partRes->find(ANDROID_JPEG_ORIENTATION);
+    int orientation = 0;
+    if (entry_orientation.count == 1) {
+        orientation = *entry_orientation.data.i32;
+        LOGE("PostProcessUnitJpegEnc orientation:%d", orientation);
+        if (orientation % 180 != 0) {
+            if (mirror && !flip) {
+                mirror = false;
+                flip = true;
+            } else if (flip && !mirror) {
+                mirror = true;
+                flip = false;
+            }
+        }
+    } else {
+        LOGE("No ANDROID_JPEG_ORIENTATION in results for EXIF");
+    }
+    LOGE("PostProcessUnitJpegEnc jpeg mirror:%d flip:%d,rotation:%d,width:%d,height:%d",
+            mirror, flip, rotation, width, height);
 
     std::shared_ptr<PostProcBuffer> tempBuf = NULL;
     //alloc a temp buffer for rga flip data.
@@ -1617,7 +1632,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                 0, 0, out->cambuf->width(), out->cambuf->height());
     }
-
+#endif
     // JPEG encoding
     status = mJpegTask->handleMessageSettings(*procsettings.get());
     CheckError((status != OK), status, "@%s, set settings failed! [%d]!",
@@ -1638,9 +1653,10 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
 
     mCurPostProcBufOut.reset();
 
+#ifdef RK_HW_JPEG_MIRROR_ROTATE
     if (tempBuf != NULL)
         tempBuf.reset();
-
+#endif
     CheckError((status != OK), status, "@%s, JPEG conversion failed! [%d]!",
                __FUNCTION__, status);
 
