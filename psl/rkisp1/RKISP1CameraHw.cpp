@@ -732,7 +732,6 @@ RKISP1CameraHw::initStaticMetadata(void)
     } else {
         mPipelineDepth = DEFAULT_PIPELINE_DEPTH;
     }
-    mPipelineDepth = HW_PIPELINE_MAX_DEPTH;
 
     /**
      * Check the consistency of the information we had in XML file.
