@@ -534,7 +534,7 @@
             <control.awbLockAvailable value="true"/>
             <control.availableSceneModes value="DISABLED"/>
             <control.availableVideoStabilizationModes value="OFF"/>
-            <control.maxRegions value="1,0,0"/>
+            <control.maxRegions value="1,0,1"/>
             <!-- JPEG -->
             <jpeg.maxSize value="19267584"/>  <!-- w*h*1.5 -->
             <!-- /* TODO */ -->
@@ -548,7 +548,7 @@
             <lens.info.availableFocalLengths value="2.04"/> <!-- HAL may override this value from CMC for RAW sensors -->
             <lens.info.availableOpticalStabilization value="OFF"/> <!-- OPTIONS: OFF, ON -->
             <lens.info.hyperfocalDistance value="0.0"/> <!-- HAL may override this value from CMC for RAW sensors -->
-            <lens.info.minimumFocusDistance value="0.0"/> <!-- HAL may override this value from CMC for RAW sensors -->
+            <lens.info.minimumFocusDistance value="0.1"/> <!-- HAL may override this value from CMC for RAW sensors -->
             <!-- Lens -->
             <lens.facing value="BACK"/>
             <!-- Request -->
@@ -570,6 +570,7 @@
                 control.aePrecaptureTrigger,
                 control.afMode,
                 control.aeRegions,
+                control.afRegions,
                 control.afTrigger,
                 control.awbLock,
                 control.awbMode,
