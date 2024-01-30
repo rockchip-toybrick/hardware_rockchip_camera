@@ -166,14 +166,19 @@ int EptzThread::RockxInit(char *model_path, char *licence_path){
     memset(&rockx_configs, 0, sizeof(rockx_config_t));
 
     LOGD("rk-debug rockx_add_config ROCKX_CONFIG_DATA_PATH=%s\n", model_path);
-#if defined(TARGET_RK3588)
+#if defined(TARGET_RK3588) | defined(TARGET_RK3576)
     rockx_add_config(&rockx_configs, ROCKX_CONFIG_DATA_PATH, model_path, strlen(model_path));
     rockx_add_config(&rockx_configs, ROCKX_CONFIG_LICENCE_KEY_PATH, licence_path, strlen(licence_path));
 #else
     rockx_add_config(&rockx_configs, ROCKX_CONFIG_DATA_PATH, model_path);
     rockx_add_config(&rockx_configs, ROCKX_CONFIG_LICENCE_KEY_PATH, licence_path);
 #endif
+#if defined(TARGET_RK3588)
     ret = rockx_create(&rockx_handle, ROCKX_MODULE_FACE_DETECTION_V2_HORIZONTAL, &rockx_configs, sizeof(rockx_config_t));
+#else
+    ret = rockx_create(&rockx_handle, ROCKX_MODULE_FACE_DETECTION_HORIZONTAL, &rockx_configs, sizeof(rockx_config_t));
+#endif
+
     if (ret != ROCKX_RET_SUCCESS) {
         LOGE("rk-debug init rockx module error %d\n", ret);
         return ret;
