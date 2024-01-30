@@ -1311,7 +1311,7 @@ std::string RKISP2PSLConfParser::getImguMediaDevice(int cameraId,std::shared_ptr
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
     std::vector<std::string> mediaDevicePaths;
     std::vector<std::string> mediaDevicePath;
-    std::vector<std::string> mediaDeviceNames {"rkisp1","rkisp0"};
+    std::vector<std::string> mediaDeviceNames {"rkisp3","rkisp2","rkisp1","rkisp0"};
 //    for (auto it : mediaDeviceNames) {
 //        mediaDevicePath = getMediaDeviceByModuleName(it);
 //        LOGD("@%s : %s,mediaDevicePathSize:%d", __FUNCTION__,it.c_str(),mediaDevicePath.size());
