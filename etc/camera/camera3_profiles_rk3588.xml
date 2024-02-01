@@ -2961,7 +2961,7 @@
             <!-- /* TODO */ -->
             <!-- The aspect ratio of the largest thumbnail size will be same as the aspect ratio of largest JPEG output size -->
             <!-- buf hw encode may not support such thumbnail size, so if we should change the jpeg output size? -->
-            <jpeg.availableThumbnailSizes value="0,0,160,120,176,144,264,196,320,180,320,240"/> <!-- INCREASING ORDER -->
+            <jpeg.availableThumbnailSizes value="0,0,160,120,176,144,320,180,320,240,528,392"/> <!-- INCREASING ORDER -->
             <!-- <jpeg.availableThumbnailSizes value="0,0,160,120,320,180,320,240"/> -->
             <!-- Lens Info-->
             <!-- TODO: availableApertures now is fake for we do not get the real apertures -->
