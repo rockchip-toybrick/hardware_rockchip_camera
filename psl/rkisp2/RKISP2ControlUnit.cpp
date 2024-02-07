@@ -169,6 +169,14 @@ int SocCamFlashCtrUnit::updateFlashResult(CameraMetadata *result)
 {
     result->update(ANDROID_CONTROL_AE_MODE, &mAeMode, 1);
     result->update(ANDROID_CONTROL_AE_STATE, &mAeState, 1);
+
+    uint8_t aeFlashMode;
+    if (mAeMode == ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH)
+        aeFlashMode = mMeanLuma < FLASH_TRIGGER_TH ? ANDROID_FLASH_MODE_SINGLE : ANDROID_FLASH_MODE_OFF;
+    else if (mAeMode <= ANDROID_CONTROL_AE_MODE_ON)
+        aeFlashMode = ANDROID_FLASH_MODE_OFF;
+    else
+        aeFlashMode = ANDROID_FLASH_MODE_SINGLE;
     result->update(ANDROID_FLASH_MODE, &mAeFlashMode, 1);
 
     uint8_t flashState = ANDROID_FLASH_STATE_READY;
@@ -177,7 +185,7 @@ int SocCamFlashCtrUnit::updateFlashResult(CameraMetadata *result)
         flashState = ANDROID_FLASH_STATE_FIRED;
 
         if (mAeMode >= ANDROID_CONTROL_AE_MODE_ON
-            && mAeFlashMode == ANDROID_FLASH_MODE_OFF) {
+            && aeFlashMode == ANDROID_FLASH_MODE_OFF) {
            flashState = ANDROID_FLASH_STATE_PARTIAL;
         }
     }
@@ -437,7 +445,15 @@ int RawCamFlashCtrUnit::setFlashSettings(const CameraMetadata *settings)
 int RawCamFlashCtrUnit::updateFlashResult(CameraMetadata *result)
 {
     result->update(ANDROID_CONTROL_AE_MODE, &mAeMode, 1);
-    result->update(ANDROID_CONTROL_AE_STATE, &mAeState, 1);
+    //result->update(ANDROID_CONTROL_AE_STATE, &mAeState, 1);
+
+    uint8_t aeFlashMode;
+    if (mAeMode == ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH)
+        aeFlashMode = mMeanLuma < FLASH_TRIGGER_TH ? ANDROID_FLASH_MODE_SINGLE : ANDROID_FLASH_MODE_OFF;
+    else if (mAeMode <= ANDROID_CONTROL_AE_MODE_ON)
+        aeFlashMode = ANDROID_FLASH_MODE_OFF;
+    else
+        aeFlashMode = ANDROID_FLASH_MODE_SINGLE;
     result->update(ANDROID_FLASH_MODE, &mAeFlashMode, 1);
 
     uint8_t flashState = ANDROID_FLASH_STATE_READY;
@@ -446,7 +462,7 @@ int RawCamFlashCtrUnit::updateFlashResult(CameraMetadata *result)
         flashState = ANDROID_FLASH_STATE_FIRED;
 
         if (mAeMode >= ANDROID_CONTROL_AE_MODE_ON
-            && mAeFlashMode == ANDROID_FLASH_MODE_OFF) {
+            && aeFlashMode == ANDROID_FLASH_MODE_OFF) {
            flashState = ANDROID_FLASH_STATE_PARTIAL;
         }
     }
