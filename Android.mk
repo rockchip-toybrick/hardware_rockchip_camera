@@ -103,11 +103,11 @@ GCSSSRC = common/gcss/graph_query_manager.cpp \
 
 ISP_VERSION := rkisp1
 
-#rk1126,rk356x,rk3588,rk3562 use RKISP2CameraHw
-ifneq ($(filter rk1126 rk356x rk3588 rk3562, $(strip $(TARGET_BOARD_PLATFORM))), )
+#rk1126,rk356x,rk3588,rk3562 rk3576 use RKISP2CameraHw
+ifneq ($(filter rk1126 rk356x rk3588 rk3562 rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
   ISP_VERSION := rkisp2
 endif
-ifneq ($(filter rk356x rk3588 rk3562, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifneq ($(filter rk356x rk3588 rk3562 rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
 ifeq ($(PRODUCT_HAVE_EPTZ),true)
   LOCAL_CFLAGS += -DRK_EPTZ
 endif
@@ -236,6 +236,11 @@ ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3562)
         LOCAL_CFLAGS += -DGRALLOC_USAGE_RGA_ACCESS
 endif
 
+ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3576)
+        LOCAL_CFLAGS += -DTARGET_RK3576
+        LOCAL_CFLAGS += -DGRALLOC_USAGE_RGA_ACCESS
+endif
+
 ifeq ($(strip $(Have3AControlLoop)), true)
 CPPHACKS += \
     -DHAVE_3A_CONTROL_LOOP
@@ -302,7 +307,7 @@ else
 LOCAL_SHARED_LIBRARIES += libjpeghwenc
 endif
 
-ifneq ($(filter rk356x rk3588 rk3562, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifneq ($(filter rk356x rk3588 rk3562 rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
 ifeq ($(PRODUCT_HAVE_EPTZ),true)
 LOCAL_SHARED_LIBRARIES += \
     libeptz \
