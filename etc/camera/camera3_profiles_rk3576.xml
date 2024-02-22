@@ -539,7 +539,7 @@
             <!-- Control -->
             <control.availableModes value="AUTO"/>
             <control.aeAvailableAntibandingModes value="OFF,50HZ,60Hz,AUTO"/>
-            <control.aeAvailableModes value="ON,OFF"/>
+            <control.aeAvailableModes value="ON,OFF,ON_AUTO_FLASH,ON_ALWAYS_FLASH"/>
             <control.aeLockAvailable value="FALSE"/>
             <!-- <control.aeAvailableTargetFpsRanges value="15,30,30,30,60,60"/> -->
             <control.aeAvailableTargetFpsRanges value="15,30,30,30"/>
@@ -746,7 +746,7 @@
             <flash.colorTemperature value="0"/>
             <flash.maxEnergy value="0"/>
             <!-- Flash info -->
-            <flash.info.available value="FALSE"/>
+            <flash.info.available value="TRUE"/>
             <flash.info.chargeDuration value="1000000"/>
             <flash.maxEnergy value="10"/>
             <!-- Sync -->
