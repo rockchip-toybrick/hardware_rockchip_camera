@@ -517,7 +517,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         cropleft &= ~0x1;
         croptop &= ~0x1;
 
-        LOGD("%s: crop region(%d,%d,%d,%d) from (%d,%d) to %dx%d, infmt %d,%d, outfmt %d,%d",
+        ALOGD("%s: crop region(%d,%d,%d,%d) from (%d,%d) to %dx%d, infmt %d,%d, outfmt %d,%d",
              __FUNCTION__, cropw, croph, cropleft, croptop,
              in->cambuf->width(), in->cambuf->height(),
              out->cambuf->width(), out->cambuf->height(),
@@ -561,6 +561,44 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         rgaout.width_stride = out->cambuf->width();
         rgaout.height_stride = out->cambuf->height();
 
+#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+    if ((out->cambuf->width() > RGA_ACTIVE_W) ||
+        (out->cambuf->height() > RGA_ACTIVE_H)) {
+        if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 cropleft, croptop, cropw, croph,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+            if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 cropleft, croptop, cropw, croph,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->height() > RGA_ACTIVE_H) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_W)) {
+            if (RgaCropScale::HeightSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 cropleft, croptop, cropw, croph,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        }
+    } else {
         if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
             LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
             PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -570,6 +608,19 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                              out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                              0, 0, out->cambuf->width(), out->cambuf->height());
         }
+    }
+
+#else
+        if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
+            LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+            PERFORMANCE_ATRACE_NAME("SWCropScale");
+            ImageScalerCore::cropComposeUpscaleNV12_bl(
+                             in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                             cropleft, croptop, cropw, croph,
+                             out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                             0, 0, out->cambuf->width(), out->cambuf->height());
+        }
+#endif
     }
 
     return status;
@@ -1622,7 +1673,55 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
     rgaout.offset_y = 0;
     rgaout.width_stride = tempBuf->cambuf->width();
     rgaout.height_stride = tempBuf->cambuf->height();
-
+#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+    if ((out->cambuf->width() > RGA_ACTIVE_W) ||
+        (out->cambuf->height() > RGA_ACTIVE_H)) {
+        if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 0, 0, in->cambuf->width(), in->cambuf->height(),
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+            if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 0, 0, in->cambuf->width(), in->cambuf->height(),
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->height() > RGA_ACTIVE_H) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_W)) {
+            if (RgaCropScale::HeightSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 0, 0, in->cambuf->width(), in->cambuf->height(),
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        }
+    } else {
+        if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
+            LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+            PERFORMANCE_ATRACE_NAME("SWCropScale");
+            ImageScalerCore::cropComposeUpscaleNV12_bl(
+                             in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                             0, 0, in->cambuf->width(), in->cambuf->height(),
+                             out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                             0, 0, out->cambuf->width(), out->cambuf->height());
+        }
+    }
+#else
     if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
         LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
         PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -1632,6 +1731,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                 0, 0, out->cambuf->width(), out->cambuf->height());
     }
+#endif
 #endif
     // JPEG encoding
     status = mJpegTask->handleMessageSettings(*procsettings.get());
@@ -2325,6 +2425,56 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
     rgaout.width_stride = out->cambuf->width();
     rgaout.height_stride = out->cambuf->height();
 
+#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+    if ((out->cambuf->width() > RGA_ACTIVE_W) ||
+        (out->cambuf->height() > RGA_ACTIVE_H)) {
+        if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 mapleft, maptop, mapwidth, mapheight,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+            if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 mapleft, maptop, mapwidth, mapheight,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        } else if ((out->cambuf->height() > RGA_ACTIVE_H) &&
+                   (out->cambuf->width() <= RGA_ACTIVE_W)) {
+            if (RgaCropScale::HeightSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
+                LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+                PERFORMANCE_ATRACE_NAME("SWCropScale");
+                ImageScalerCore::cropComposeUpscaleNV12_bl(
+                                 in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                                 mapleft, maptop, mapwidth, mapheight,
+                                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                                 0, 0, out->cambuf->width(), out->cambuf->height());
+            }
+        }
+    } else {
+        if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
+            LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
+            PERFORMANCE_ATRACE_NAME("SWCropScale");
+            ImageScalerCore::cropComposeUpscaleNV12_bl(
+                             in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                             mapleft, maptop, mapwidth, mapheight,
+                             out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
+                             0, 0, out->cambuf->width(), out->cambuf->height());
+        }
+    }
+
+#else
     if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
         LOGW("%s: digital zoom by RGA failed, use arm instead...", __FUNCTION__);
         PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -2334,7 +2484,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
                          out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                          0, 0, out->cambuf->width(), out->cambuf->height());
     }
-
+#endif
     return OK;
 }
 

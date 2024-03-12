@@ -20,6 +20,34 @@
 namespace android {
 namespace camera2 {
 
+#if defined(TARGET_RK312X)
+#define RGA_VER (1.0)
+#define RGA_ACTIVE_W (2048)
+#define RGA_VIRTUAL_W (4096)
+#define RGA_ACTIVE_H (2048)
+#define RGA_VIRTUAL_H (2048)
+#else
+#if defined(TARGET_RK3588)
+#define RGA_VER (3.0)
+#define RGA_ACTIVE_W (8128)
+#define RGA_VIRTUAL_W (8128)
+#define RGA_ACTIVE_H (8128)
+#define RGA_VIRTUAL_H (8128)
+#elif (defined(TARGET_RK3576)||defined(TARGET_RK3562))
+#define RGA_VER (2.0)
+#define RGA_ACTIVE_W (4096)
+#define RGA_VIRTUAL_W (8192)
+#define RGA_ACTIVE_H (4096)
+#define RGA_VIRTUAL_H (8192)
+#else
+#define RGA_VER (2.0)
+#define RGA_ACTIVE_W (4096)
+#define RGA_VIRTUAL_W (4096)
+#define RGA_ACTIVE_H (4096)
+#define RGA_VIRTUAL_H (4096)
+#endif
+#endif
+
 class RgaCropScale {
  public:
     struct Params {
@@ -42,6 +70,10 @@ class RgaCropScale {
     };
 
     static int CropScaleNV12Or21(struct Params* in, struct Params* out);
+    static int WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout);
+    static int HeightSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout);
+    static int WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout);
+
 };
 
 } /* namespace camera2 */

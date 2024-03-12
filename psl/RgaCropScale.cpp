@@ -25,28 +25,6 @@
 namespace android {
 namespace camera2 {
 
-#if defined(TARGET_RK312X)
-#define RGA_VER (1.0)
-#define RGA_ACTIVE_W (2048)
-#define RGA_VIRTUAL_W (4096)
-#define RGA_ACTIVE_H (2048)
-#define RGA_VIRTUAL_H (2048)
-#else
-#if defined(TARGET_RK3588)
-#define RGA_VER (3.0)
-#define RGA_ACTIVE_W (8128)
-#define RGA_VIRTUAL_W (8128)
-#define RGA_ACTIVE_H (8128)
-#define RGA_VIRTUAL_H (8128)
-#else
-#define RGA_VER (2.0)
-#define RGA_ACTIVE_W (4096)
-#define RGA_VIRTUAL_W (4096)
-#define RGA_ACTIVE_H (4096)
-#define RGA_VIRTUAL_H (4096)
-#endif
-#endif
-
 #if defined(TARGET_RK3588)
 #include <im2d_api/im2d.h>
 #endif
@@ -66,7 +44,7 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
     if (!in || !out)
         return -1;
 
-	if((out->width > RGA_VIRTUAL_W) || (out->height > RGA_VIRTUAL_H)){
+	if((out->width > RGA_ACTIVE_W) || (out->height > RGA_ACTIVE_H)){
 			ALOGE("%s(%d): out wxh %dx%d beyond rga capability",
                  __FUNCTION__, __LINE__,
                  out->width, out->height);
@@ -214,6 +192,199 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
 	releasebuffer_handle(src_handle);
 	releasebuffer_handle(dst_handle);
 #endif
+    return 0;
+}
+
+/* split buffer to left right to do crop scale */
+int RgaCropScale::WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout) {
+                /* test start */
+    char *src = rgain->vir_addr;
+    char *dst = rgaout->vir_addr;
+    int src_fd = rgain->fd;
+    int dst_fd = rgaout->fd;
+    unsigned int in_w, in_h, in_offset_x, in_offset_y, out_w, out_h, out_offset_x, out_offset_y;
+    unsigned int in_w_stride, in_h_stride, out_w_stride, out_h_stride;
+
+    ALOGD("@%s: do split copy/scale start!", __FUNCTION__);
+    in_w = rgain->width;
+    in_h = rgain->height;
+    in_offset_x = rgain->offset_x;
+    in_offset_y = rgain->offset_y;
+    out_w = rgaout->width;
+    out_h = rgaout->height;
+    out_offset_x = rgaout->offset_x;
+    out_offset_y = rgaout->offset_y;
+    in_w_stride = rgain->width_stride;
+    in_h_stride = rgain->height_stride;
+    out_w_stride = rgaout->width_stride;
+    out_h_stride = rgaout->height_stride;
+
+    rgain->width = in_w / 2;
+
+    rgaout->width = out_w / 2;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do second split copy/ scale", __FUNCTION__);
+
+
+    rgain->offset_x = in_offset_x + in_w / 2;
+    rgaout->offset_x = out_w_stride / 2;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+    ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
+    return 0;
+}
+
+/* split buffer to up and down to do crop scale */
+int RgaCropScale::HeightSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout) {
+                /* test start */
+    char *src = rgain->vir_addr;
+    char *dst = rgaout->vir_addr;
+    int src_fd = rgain->fd;
+    int dst_fd = rgaout->fd;
+    unsigned int in_w, in_h, in_offset_x, in_offset_y, out_w, out_h, out_offset_x, out_offset_y;
+    unsigned int in_w_stride, in_h_stride, out_w_stride, out_h_stride;
+
+    ALOGD("@%s: do split copy/scale start!", __FUNCTION__);
+    in_w = rgain->width;
+    in_h = rgain->height;
+    in_offset_x = rgain->offset_x;
+    in_offset_y = rgain->offset_y;
+    out_w = rgaout->width;
+    out_h = rgaout->height;
+    out_offset_x = rgaout->offset_x;
+    out_offset_y = rgaout->offset_y;
+    in_w_stride = rgain->width_stride;
+    in_h_stride = rgain->height_stride;
+    out_w_stride = rgaout->width_stride;
+    out_h_stride = rgaout->height_stride;
+
+    rgain->height = in_h / 2;
+    rgain->width_stride = in_w_stride;
+    rgain->height_stride = in_h_stride;
+
+    rgaout->height = out_h / 2;
+    rgaout->width_stride = out_w_stride;
+    rgaout->height_stride  = out_h_stride;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do second split copy/ scale", __FUNCTION__);
+
+    rgain->offset_y = in_offset_y + in_h / 2;
+    rgaout->offset_y = out_h_stride / 2;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+    ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
+    return 0;
+}
+
+/* split buffer to up and down to do crop scale */
+int RgaCropScale::WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout) {
+                /* test start */
+    char *src = rgain->vir_addr;
+    char *dst = rgaout->vir_addr;
+    int src_fd = rgain->fd;
+    int dst_fd = rgaout->fd;
+    unsigned int in_w, in_h, in_offset_x, in_offset_y, out_w, out_h, out_offset_x, out_offset_y;
+    unsigned int in_w_stride, in_h_stride, out_w_stride, out_h_stride;
+
+    ALOGD("@%s: do split copy/scale start!", __FUNCTION__);
+
+    /* left top */
+    ALOGD("@%s: left top split copy/scale start!", __FUNCTION__);
+
+    in_w = rgain->width;
+    in_h = rgain->height;
+    in_offset_x = rgain->offset_x;
+    in_offset_y = rgain->offset_y;
+    out_w = rgaout->width;
+    out_h = rgaout->height;
+    out_offset_x = rgaout->offset_x;
+    out_offset_y = rgaout->offset_y;
+    in_w_stride = rgain->width_stride;
+    in_h_stride = rgain->height_stride;
+    out_w_stride = rgaout->width_stride;
+    out_h_stride = rgaout->height_stride;
+
+    rgain->width = in_w / 2;
+    rgain->height = in_h / 2;
+    rgain->width_stride = in_w_stride;
+    rgain->height_stride = in_h_stride;
+
+
+    rgaout->width = out_w / 2;
+    rgaout->height = out_h / 2;
+    rgaout->width_stride = out_w_stride;
+    rgaout->height_stride  = out_h_stride;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do right top split copy/ scale", __FUNCTION__);
+    rgain->offset_x = in_offset_x + in_w / 2;
+    rgain->offset_y = in_offset_y;
+
+    rgaout->offset_x = out_w_stride / 2;
+    rgaout->offset_y = 0;
+    rgaout->width = out_w / 2;
+    rgaout->height = out_h / 2;
+    rgaout->width_stride = out_w_stride;
+    rgaout->height_stride  = out_h_stride;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do left bottom split copy/ scale", __FUNCTION__);
+    rgain->offset_x = in_offset_x;
+    rgain->offset_y = in_offset_y + in_h / 2;
+
+    rgaout->offset_x = 0;
+    rgaout->offset_y = out_h_stride / 2;
+    rgaout->width = out_w / 2;
+    rgaout->height = out_h / 2;
+    rgaout->width_stride = out_w_stride;
+    rgaout->height_stride  = out_h_stride;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do right bottom split copy/ scale", __FUNCTION__);
+    rgain->offset_x = in_offset_x + in_w / 2;
+    rgain->offset_y = in_offset_y + in_h / 2;
+
+    rgaout->offset_x = out_w_stride / 2;;
+    rgaout->offset_y = out_h_stride / 2;
+    rgaout->width = out_w / 2;
+    rgaout->height = out_h / 2;
+    rgaout->width_stride = out_w_stride;
+    rgaout->height_stride  = out_h_stride;
+
+    if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
+        ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
+        return -1;
+    }
+
+    ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
     return 0;
 }
 
