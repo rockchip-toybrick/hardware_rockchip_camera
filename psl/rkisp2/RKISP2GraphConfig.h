@@ -42,6 +42,9 @@ namespace rkisp2 {
 #if defined(TARGET_RK3588)
 #define MP_MAX_WIDTH        8192
 #define MP_MAX_HEIGHT       6144
+#elif (defined(TARGET_RK3576)||defined(TARGET_RK3562))
+#define MP_MAX_WIDTH        8064
+#define MP_MAX_HEIGHT       6048
 #else
 #define MP_MAX_WIDTH        4416
 #define MP_MAX_HEIGHT       3312
@@ -56,7 +59,7 @@ namespace rkisp2 {
 #if defined(TARGET_RK3588)
 #define PP_MAX_WIDTH        8128
 #else
-#define PP_MAX_WIDTH        4096
+#define PP_MAX_WIDTH        8064
 #endif
 #endif
 
