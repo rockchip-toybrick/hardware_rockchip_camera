@@ -30,6 +30,8 @@ ifeq (1,$(strip $(shell expr $(BOARD_DEFAULT_CAMERA_HAL_VERSION) \>= 3.0)))
 LOCAL_PATH:= $(call my-dir)
 include $(call all-subdir-makefiles)
 
+ANDROID_V9_RK3576_SDK=false
+
 include $(CLEAR_VARS)
 
 AALSRC = AAL/Camera3HAL.cpp \
@@ -71,6 +73,14 @@ COMMONSRC = common/SysCall.cpp \
             common/IaAtrace.cpp \
             common/GFXFormatLinuxGeneric.cpp
 
+ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) = 28)))
+ifeq ($(strip $(TARGET_BOARD_PLATFORM)), rk3576)
+ANDROID_V9_RK3576_SDK=true
+LOCAL_CFLAGS += -DANDROID_V9_RK3576_PLATFORM
+LOCAL_CFLAGS += -DMAP_SHARED=1
+endif
+endif
+
 ifeq ($(TARGET_RK_GRALLOC_VERSION),4)
     LOCAL_CFLAGS += -DRK_GRALLOC_4
     COMMONSRC += common/camera_buffer_manager_gralloc4_impl.cpp
@@ -89,6 +99,8 @@ JPEGSRC = common/jpeg/ExifCreater.cpp \
 
 
 ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 30)))
+JPEGSRC += common/jpeg/ImgHWEncoderMpp.cpp
+else ifeq ($(strip $(ANDROID_V9_RK3576_SDK)),true)
 JPEGSRC += common/jpeg/ImgHWEncoderMpp.cpp
 else
 JPEGSRC += common/jpeg/ImgHWEncoder.cpp
@@ -149,7 +161,7 @@ LOCAL_C_INCLUDES += \
     frameworks/av/include \
     hardware/libhardware/include
 endif
-ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 29)))
+ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 28)))
 LOCAL_C_INCLUDES += \
     system/core/liblog/include
 endif
@@ -166,6 +178,8 @@ LOCAL_C_INCLUDES += \
     $(LOCAL_PATH)/include/arc
 
 ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 30)))
+LOCAL_C_INCLUDES += hardware/rockchip/libhwjpeg/inc
+else ifeq ($(strip $(ANDROID_V9_RK3576_SDK)),true)
 LOCAL_C_INCLUDES += hardware/rockchip/libhwjpeg/inc
 else
 LOCAL_C_INCLUDES += hardware/rockchip/jpeghw
@@ -303,6 +317,8 @@ LOCAL_SHARED_LIBRARIES:= \
 
 ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 30)))
 LOCAL_SHARED_LIBRARIES += libhwjpeg
+else ifeq ($(strip $(ANDROID_V9_RK3576_SDK)),true)
+LOCAL_SHARED_LIBRARIES += libhwjpeg
 else
 LOCAL_SHARED_LIBRARIES += libjpeghwenc
 endif
@@ -392,3 +408,37 @@ LOCAL_MODULE_TAGS:= optional
 
 include $(BUILD_SHARED_LIBRARY)
 endif
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := media-ctl
+LOCAL_SRC_FILES := etc/tools/$(strip $(TARGET_ARCH))/$(LOCAL_MODULE)
+LOCAL_MODULE_TAGS := optional
+LOCAL_STRIP_MODULE := false
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
+LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE_PATH := $(TARGET_OUT_VENDOR_EXECUTABLES)
+
+ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 33)))
+LOCAL_POST_INSTALL_CMD := cp $(TARGET_OUT_VENDOR)/bin/$(LOCAL_MODULE) $(TARGET_RECOVERY_ROOT_OUT)/system/bin/$(LOCAL_MODULE)
+endif
+
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := v4l2-ctl
+LOCAL_SRC_FILES := etc/tools/$(strip $(TARGET_ARCH))/$(LOCAL_MODULE)
+LOCAL_MODULE_TAGS := optional
+LOCAL_STRIP_MODULE := false
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
+LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE_PATH := $(TARGET_OUT_VENDOR_EXECUTABLES)
+
+ifeq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \>= 33)))
+LOCAL_POST_INSTALL_CMD := cp $(TARGET_OUT_VENDOR)/bin/$(LOCAL_MODULE) $(TARGET_RECOVERY_ROOT_OUT)/system/bin/$(LOCAL_MODULE)
+endif
+
+include $(BUILD_PREBUILT)

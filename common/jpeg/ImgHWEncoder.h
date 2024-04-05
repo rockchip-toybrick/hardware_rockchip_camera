@@ -25,7 +25,7 @@
 #include "EXIFMetaData.h"
 #include "Exif.h"
 #include "JpegMakerCore.h"
-#if PLATFORM_SDK_API_VERSION >= 30
+#if PLATFORM_SDK_API_VERSION >= 30 || defined(ANDROID_V9_RK3576_PLATFORM)
 #include "RkExifInfo.h"
 #include "MpiJpegEncoder.h"
 #else
@@ -74,7 +74,7 @@ private:  /* Members */
     char sModel[256];
     int mCameraId;
 
-#if PLATFORM_SDK_API_VERSION >= 30
+#if PLATFORM_SDK_API_VERSION >= 30 || defined(ANDROID_V9_RK3576_PLATFORM)
     MpiJpegEncoder *mEncoder;
 #else
     vpu_display_mem_pool *mPool;
