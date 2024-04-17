@@ -287,8 +287,8 @@ RKISP2ImguUnit::configStreamsDone()
     }
 
     /* queue buf before stream on */
-    return status;
-#if 0
+    //return status;
+#if 1
     int32_t duration = 30;    //default duration 30ms
     status = PlatformData::getCameraHWInfo()->getSensorFrameDuration(mCameraId, duration);
     if (status != NO_ERROR)
@@ -298,8 +298,8 @@ RKISP2ImguUnit::configStreamsDone()
     // the(actual skipFrams - 2) for the driver will alway drop 2 frames.
     // the first frame can't be captured by ISP, the second frame will be
     // captured to dummy buffer.
-    const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
-    int skipFrames = cap->frameInitialSkip();
+    //const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
+    //int skipFrames = cap->frameInitialSkip();
     if (!mIsStillChangeStream) {
         usleep(skipFrames * duration * 1000);
         LOGD("@%s : skipFrames: %d, sensorFrameDuration: %d", __FUNCTION__, skipFrames, duration);
