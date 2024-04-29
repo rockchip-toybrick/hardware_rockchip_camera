@@ -565,7 +565,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            (out->cambuf->height() > RGA_ACTIVE_H)) {
             if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -576,7 +576,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                                  0, 0, out->cambuf->width(), out->cambuf->height());
             }
         } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+                   (out->cambuf->height() <= RGA_ACTIVE_H)) {
             if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -1677,7 +1677,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            (out->cambuf->height() > RGA_ACTIVE_H)) {
             if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -1688,7 +1688,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
                                  0, 0, out->cambuf->width(), out->cambuf->height());
             }
         } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+                   (out->cambuf->height() <= RGA_ACTIVE_H)) {
             if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -2429,7 +2429,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-            (out->cambuf->width() > RGA_ACTIVE_H)) {
+            (out->cambuf->height() > RGA_ACTIVE_H)) {
             if (RgaCropScale::WHSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
@@ -2440,7 +2440,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
                                  0, 0, out->cambuf->width(), out->cambuf->height());
             }
         } else if ((out->cambuf->width() > RGA_ACTIVE_W) &&
-                   (out->cambuf->width() <= RGA_ACTIVE_H)) {
+                   (out->cambuf->height() <= RGA_ACTIVE_H)) {
             if (RgaCropScale::WidthSplit_CropScaleNV12Or21(&rgain, &rgaout)) {
                 LOGE("%s:  crop&scale by RGA failed...", __FUNCTION__);
                 PERFORMANCE_ATRACE_NAME("SWCropScale");
