@@ -120,8 +120,8 @@ public:
     /* int dmaBufFd() {return mType == BUF_TYPE_HANDLE ? mHandle->data[0] : mDmaBufFd;} */
     // need get handle fd from gralloc perform ops
     int dmaBufFd() {
-        arc::CameraBufferManager* bufManager = arc::CameraBufferManager::GetInstance();
-        return mType == BUF_TYPE_HANDLE ? bufManager->GetHandleFd(mHandle) : mDmaBufFd;
+        //arc::CameraBufferManager* bufManager = arc::CameraBufferManager::GetInstance();
+        return mType == BUF_TYPE_HANDLE ? mHandleBufFd: mDmaBufFd;
     }
     int status() { return mUserBuffer.status; }
 
@@ -184,6 +184,7 @@ private:
 
     int mCameraId;
     int mDmaBufFd;                    /*!< file descriptor for dmabuf */
+    int mHandleBufFd;
 };
 
 namespace MemoryUtils {

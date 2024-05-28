@@ -212,7 +212,6 @@ status_t CameraBuffer::init(const camera3_stream_buffer *aBuffer, int cameraId)
     mWidth = aBuffer->stream->width;
     mHeight = aBuffer->stream->height;
     mFormat = aBuffer->stream->format;
-    mV4L2Fmt = mGbmBufferManager->GetV4L2PixelFormat(mHandle);
     // Use actual width from platform native handle for stride
     mStride = mGbmBufferManager->GetPlaneStride(*aBuffer->buffer, 0);
     mSize = 0;
@@ -241,14 +240,16 @@ status_t CameraBuffer::init(const camera3_stream_buffer *aBuffer, int cameraId)
     /* mUserBuffer.release_fence = -1; */
 
     mCameraId = cameraId;
-    LOGI("@%s, mHandle:%p, mHandlePtr:%p, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s, reqId:%d",
-        __FUNCTION__, mHandle, mHandlePtr, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt), mRequestID);
 
     if (mHandle == nullptr) {
         LOGE("@%s: invalid buffer handle", __FUNCTION__);
         mUserBuffer.status = CAMERA3_BUFFER_STATUS_ERROR;
         return BAD_VALUE;
     }
+    mV4L2Fmt = mGbmBufferManager->GetV4L2PixelFormat(mHandle);
+    mHandleBufFd = mGbmBufferManager->GetHandleFd(mHandle);
+    LOGI("@%s, mHandle:%p, mHandlePtr:%p, mHandleBufFd:%d, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s, reqId:%d",
+        __FUNCTION__, mHandle, mHandlePtr, mHandleBufFd, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt), mRequestID);
 
     int ret = registerBuffer();
     LOGI("@%s,after register mHandle:%p, mHandlePtr:%p",__FUNCTION__, mHandle, mHandlePtr);
@@ -281,6 +282,7 @@ status_t CameraBuffer::init(const camera3_stream_t* stream,
     mV4L2Fmt = mGbmBufferManager->GetV4L2PixelFormat(mHandle);
     // Use actual width from platform native handle for stride
     mStride = mGbmBufferManager->GetPlaneStride(handle, 0);
+    mHandleBufFd = mGbmBufferManager->GetHandleFd(mHandle);
     mSize = 0;
     mLocked = false;
     mOwner = nullptr;
@@ -294,8 +296,8 @@ status_t CameraBuffer::init(const camera3_stream_t* stream,
     // hal internal buffer, just lock it and unlock in destruct function
     // mSize filled here
     lock();
-    LOGI("@%s, mHandle:%p, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s",
-        __FUNCTION__, mHandle, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt));
+    LOGI("@%s, mHandle:%p, mHandleBufFd:%d, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s",
+        __FUNCTION__, mHandle, mHandleBufFd, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt));
 
     return NO_ERROR;
 }
