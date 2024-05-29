@@ -230,7 +230,7 @@ class RKISP2PostProcessUnit : public RKISP2IPostProcessListener,
     virtual status_t processEptzFrame(const std::shared_ptr<PostProcBuffer>& buf);
     #endif
     std::shared_ptr<RKISP2FecUnit> mFecUnit;
-
+    int mJpegBufCount;
  private:
     /*disable copy constructor and assignment*/
     RKISP2PostProcessUnit(const RKISP2PostProcessUnit&);

@@ -303,6 +303,7 @@ RKISP2PostProcessUnit::prepareProcess() {
         mName, __FUNCTION__, mInBufferPool.size(), mOutBufferPool.size());
     mCurPostProcBufIn = mInBufferPool[0].first;
     mCurProcSettings = mInBufferPool[0].second;
+    mJpegBufCount = mCurProcSettings->request->getBufferCountOfFormat(HAL_PIXEL_FORMAT_BLOB);
     mInBufferPool.erase(mInBufferPool.begin());
     // get an output buffer from output buffer queue or internal
     // buffer queue
@@ -1586,7 +1587,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
 
     LOGD("%s: @%s, reqId: %d",
          mName, __FUNCTION__, procsettings->request->getId());
-
+    ALOGD("@%s, mJpegBufCount(%d)", __FUNCTION__, mJpegBufCount);
     inbuf->cambuf->dumpImage(CAMERA_DUMP_JPEG, "before_jpeg_converion_nv12");
 #ifdef RK_HW_JPEG_MIRROR_ROTATE
     bool isFront = PlatformData::facing(mPipeline->getCameraId()) == CAMERA_FACING_FRONT;
@@ -2310,7 +2311,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
                               const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
     PERFORMANCE_ATRACE_CALL();
     CameraWindow& crop = settings->cropRegion;
-    int jpegBufCount = settings->request->getBufferCountOfFormat(HAL_PIXEL_FORMAT_BLOB);
+    int jpegBufCount = mJpegBufCount;
 
     bool flip = false;
     bool mirror = false;
@@ -2528,7 +2529,7 @@ RKISP2PostProcessUnitFec::processFrame(const std::shared_ptr<PostProcBuffer>& in
                               const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
     PERFORMANCE_ATRACE_CALL();
     CameraWindow& crop = settings->cropRegion;
-    int jpegBufCount = settings->request->getBufferCountOfFormat(HAL_PIXEL_FORMAT_BLOB);
+    int jpegBufCount = mJpegBufCount;
 
     bool mirror_handing = false;
 #ifdef MIRROR_HANDLING_FOR_FRONT_CAMERA
