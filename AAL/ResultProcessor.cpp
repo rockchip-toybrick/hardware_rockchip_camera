@@ -144,6 +144,7 @@ void ResultProcessor::messageThreadLoop(void)
         status_t status = NO_ERROR;
         Message msg;
         mMessageQueue.receive(&msg);
+
         PERFORMANCE_HAL_ATRACE_PARAM1("msg", msg.id);
         switch (msg.id) {
         case MESSAGE_ID_EXIT:
@@ -474,9 +475,11 @@ void ResultProcessor::returnPendingBuffers(RequestState_t* reqState)
             LOGD(" <Request %d> return an input buffer", reqState->reqId);
         } else {
             result.output_buffers = &buf;
+            LOGD("%s buf.release_fence:%d",__FUNCTION__,buf.release_fence);
         }
 
         processCaptureResult(reqState, &result);
+        pendingBuf->setRgaFenceFd(-1);
         pendingBuf->getOwner()->decOutBuffersInHal();
         reqState->buffersReturned += 1;
         LOGD(" <Request %d> camera id %d buffer done %d/%d ", reqState->reqId,

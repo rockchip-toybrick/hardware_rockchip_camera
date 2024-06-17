@@ -495,7 +495,8 @@ OutputFrameWorker::prepareBuffer(std::shared_ptr<CameraBuffer>& buffer)
     CheckError((buffer.get() == nullptr), UNKNOWN_ERROR, "null buffer!");
 
     status_t status = NO_ERROR;
-    if (!buffer->isLocked()) {
+    // use dmafd or rga handle instead virtual address, virtual address will use for jpegEncoder only.
+    if (!buffer->isLocked() && buffer->format() == HAL_PIXEL_FORMAT_BLOB) {
         status = buffer->lock();
         if (CC_UNLIKELY(status != NO_ERROR)) {
             LOGE("Could not lock the buffer error %d", status);

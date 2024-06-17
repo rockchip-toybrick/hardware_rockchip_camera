@@ -53,7 +53,13 @@ status_t
 IPostProcessSource::notifyListeners(const std::shared_ptr<PostProcBuffer>& buf,
                                     const std::shared_ptr<ProcUnitSettings>& settings,
                                     int err) {
-    LOGD("@%s", __FUNCTION__);
+    int rga_releasefence = buf->cambuf->getRgaFenceFd();
+    int listener_size = mListeners.size();
+    LOGD("@%s rga_releasefence:%d listener_size:%d", __FUNCTION__,rga_releasefence,mListeners.size());
+    if(rga_releasefence != -1 && listener_size > 1){
+        RgaCropScale::WaitFenceDone(rga_releasefence);
+        buf->cambuf->setRgaFenceFd(-1);
+    }
 
     status_t status = OK;
     std::lock_guard<std::mutex> l(mListenersLock);
@@ -506,8 +512,9 @@ PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
              out->cambuf->v4l2Fmt());
 
         RgaCropScale::Params rgain, rgaout;
-
+        rgain.acquire_fence_fd = in->cambuf->getRgaFenceFd();
         rgain.fd = in->cambuf->dmaBufFd();
+        rgain.handle = in->cambuf->dmaBufRgaFd();
         if (in->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
             in->cambuf->v4l2Fmt() == V4L2_PIX_FMT_NV12)
             rgain.fmt = HAL_PIXEL_FORMAT_YCrCb_NV12;
@@ -523,6 +530,7 @@ PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         rgain.height_stride = in->cambuf->height();
 
         rgaout.fd = out->cambuf->dmaBufFd();
+        rgaout.handle = out->cambuf->dmaBufRgaFd();
         // HAL_PIXEL_FORMAT_YCbCr_420_888 buffer layout is the same as NV12
         // in gralloc module implementation
         if (out->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
@@ -548,6 +556,10 @@ PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                              cropleft, croptop, cropw, croph,
                              out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                              0, 0, out->cambuf->width(), out->cambuf->height());
+        }
+        if(rgaout.release_fence_fd != -1){
+            out->cambuf->setRgaFenceFd(rgaout.release_fence_fd);
+            rgaout.release_fence_fd = -1;
         }
     }
 
@@ -1384,6 +1396,14 @@ status_t
 PostProcessUnitJpegEnc::notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
                                          const std::shared_ptr<ProcUnitSettings>& settings,
                                          int err) {
+    int releasefence = buf->cambuf->getRgaFenceFd();
+    LOGD("%s: @%s, reqId: %d getRgaFenceFd:%d",
+         mName, __FUNCTION__, settings->request->getId(),releasefence);
+    if(releasefence != -1){
+        RgaCropScale::WaitFenceDone(releasefence);
+        buf->cambuf->setRgaFenceFd(-1);
+    }
+
     std::unique_lock<std::mutex> l(mApiLock, std::defer_lock);
     l.lock();
     // fix VideoSnapshot exception:
@@ -2040,8 +2060,9 @@ PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuffer>& 
          out->cambuf->v4l2Fmt());
     // try RGA firstly
     RgaCropScale::Params rgain, rgaout;
-
+    rgain.acquire_fence_fd = in->cambuf->getRgaFenceFd();
     rgain.fd = in->cambuf->dmaBufFd();
+    rgain.handle = in->cambuf->dmaBufRgaFd();
     if (in->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
         in->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
         in->cambuf->format() == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
@@ -2059,6 +2080,7 @@ PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuffer>& 
     rgain.height_stride = in->cambuf->height();
 
     rgaout.fd = out->cambuf->dmaBufFd();
+    rgaout.handle = out->cambuf->dmaBufRgaFd();
     if (out->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
         out->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
         out->cambuf->format() == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
@@ -2083,6 +2105,10 @@ PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuffer>& 
                          mapleft, maptop, mapwidth, mapheight,
                          out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                          0, 0, out->cambuf->width(), out->cambuf->height());
+    }
+    if(rgaout.release_fence_fd != -1){
+        out->cambuf->setRgaFenceFd(rgaout.release_fence_fd);
+        rgaout.release_fence_fd = -1;
     }
 
     return OK;

@@ -74,8 +74,13 @@ status_t
 IPostProcessSource::notifyListeners(const std::shared_ptr<PostProcBuffer>& buf,
                                     const std::shared_ptr<RKISP2ProcUnitSettings>& settings,
                                     int err) {
-    LOGD("@%s", __FUNCTION__);
-
+    int rga_releasefence = buf->cambuf->getRgaFenceFd();
+    int listener_size = mListeners.size();
+    LOGD("@%s rga_releasefence:%d listener_size:%d", __FUNCTION__,rga_releasefence,mListeners.size());
+    if(rga_releasefence != -1 && listener_size > 1){
+        RgaCropScale::WaitFenceDone(rga_releasefence);
+        buf->cambuf->setRgaFenceFd(-1);
+    }
     status_t status = OK;
     std::lock_guard<std::mutex> l(mListenersLock);
     for (auto &listener : mListeners) {
@@ -279,7 +284,7 @@ RKISP2PostProcessUnit::drain() {
 
 status_t
 RKISP2PostProcessUnit::addOutputBuffer(std::shared_ptr<PostProcBuffer> buf) {
-    LOGD("%s: @%s ", mName, __FUNCTION__);
+    LOGD("%s: @%s, buf dmaFd:%d,rgaFd:%d rgaFence:%d", mName, __FUNCTION__, buf->cambuf->dmaBufFd(),buf->cambuf->dmaBufRgaFd(),buf->cambuf->getRgaFenceFd());
 
     std::lock_guard<std::mutex> l(mApiLock);
     if (mBufType != kPostProcBufTypeExt) {
@@ -457,7 +462,7 @@ RKISP2PostProcessUnit::messageThreadLoop(void) {
 status_t RKISP2PostProcessUnit::notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
                                          const std::shared_ptr<RKISP2ProcUnitSettings>& settings,
                                          int err) {
-    LOGD("%s: @%s, mInBufferPool size:%d", mName, __FUNCTION__, mInBufferPool.size() + 1);
+    LOGD("%s: @%s, mInBufferPool size:%d inBuf dmaFd:%d,rgaFd:%d rgaFence:%d", mName, __FUNCTION__, mInBufferPool.size() + 1,buf->cambuf->dmaBufFd(),buf->cambuf->dmaBufRgaFd(),buf->cambuf->getRgaFenceFd());
 
     std::unique_lock<std::mutex> l(mApiLock, std::defer_lock);
 
@@ -544,7 +549,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         cropleft &= ~0x1;
         croptop &= ~0x1;
 
-        ALOGD("%s: crop region(%d,%d,%d,%d) from (%d,%d) to %dx%d, infmt %d,%d, outfmt %d,%d",
+        LOGD("%s: crop region(%d,%d,%d,%d) from (%d,%d) to %dx%d, infmt %d,%d, outfmt %d,%d",
              __FUNCTION__, cropw, croph, cropleft, croptop,
              in->cambuf->width(), in->cambuf->height(),
              out->cambuf->width(), out->cambuf->height(),
@@ -554,8 +559,9 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
              out->cambuf->v4l2Fmt());
 
         RgaCropScale::Params rgain, rgaout;
-
+        rgain.acquire_fence_fd = in->cambuf->getRgaFenceFd();
         rgain.fd = in->cambuf->dmaBufFd();
+        rgain.handle = in->cambuf->dmaBufRgaFd();
         if (in->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
             in->cambuf->v4l2Fmt() == V4L2_PIX_FMT_NV12)
             rgain.fmt = HAL_PIXEL_FORMAT_YCrCb_NV12;
@@ -571,6 +577,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         rgain.height_stride = in->cambuf->height();
 
         rgaout.fd = out->cambuf->dmaBufFd();
+        rgaout.handle = out->cambuf->dmaBufRgaFd();
         // HAL_PIXEL_FORMAT_YCbCr_420_888 buffer layout is the same as NV12
         // in gralloc module implementation
         if (out->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
@@ -635,6 +642,10 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                              out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                              0, 0, out->cambuf->width(), out->cambuf->height());
         }
+        if(rgaout.release_fence_fd != -1){
+            out->cambuf->setRgaFenceFd(rgaout.release_fence_fd);
+            rgaout.release_fence_fd = -1;
+        }
     }
 
 #else
@@ -646,6 +657,10 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
                              cropleft, croptop, cropw, croph,
                              out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                              0, 0, out->cambuf->width(), out->cambuf->height());
+        }
+        if(rgaout.release_fence_fd != -1){
+            out->cambuf->setRgaFenceFd(rgaout.release_fence_fd);
+            rgaout.release_fence_fd = -1;
         }
 #endif
     }
@@ -724,6 +739,10 @@ RKISP2PostProcessUnit::processEptzFrame(const std::shared_ptr<PostProcBuffer>& m
         }
     }
     RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout);
+    if(rgaout.release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout.release_fence_fd);
+        rgaout.release_fence_fd = -1;
+    }
     return OK;
 }
 #endif
@@ -1674,6 +1693,13 @@ status_t
 RKISP2PostProcessUnitJpegEnc::notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
                                          const std::shared_ptr<RKISP2ProcUnitSettings>& settings,
                                          int err) {
+    int releasefence = buf->cambuf->getRgaFenceFd();
+    LOGD("%s: @%s, reqId: %d getRgaFenceFd:%d",
+         mName, __FUNCTION__, settings->request->getId(),releasefence);
+    if(releasefence != -1){
+        RgaCropScale::WaitFenceDone(releasefence);
+        buf->cambuf->setRgaFenceFd(-1);
+    }
     std::unique_lock<std::mutex> l(mApiLock, std::defer_lock);
     l.lock();
     // fix VideoSnapshot exception:
@@ -1839,6 +1865,10 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
                              out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                              0, 0, out->cambuf->width(), out->cambuf->height());
         }
+        if(rgaout.release_fence_fd != -1 ){
+            RgaCropScale::WaitFenceDone(rgaout.release_fence_fd);
+            rgaout.release_fence_fd = -1;
+        }
     }
 #else
     if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
@@ -1849,6 +1879,11 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
                 0, 0, in->cambuf->width(), in->cambuf->height(),
                 out->cambuf->data(), out->cambuf->height(), out->cambuf->width(),
                 0, 0, out->cambuf->width(), out->cambuf->height());
+    }
+
+    if(rgaout.release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout.release_fence_fd);
+        rgaout.release_fence_fd = -1;
     }
 #endif
 #endif
@@ -2510,7 +2545,9 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
          out->cambuf->v4l2Fmt());
     // try RGA firstly
     RgaCropScale::Params rgain, rgaout;
+    rgain.acquire_fence_fd = in->cambuf->getRgaFenceFd();
     rgain.fd = in->cambuf->dmaBufFd();
+    rgain.handle = in->cambuf->dmaBufRgaFd();
     if (in->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
         in->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
         in->cambuf->format() == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
@@ -2529,6 +2566,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
     rgain.width_stride = in->cambuf->width();
     rgain.height_stride = in->cambuf->height();
     rgaout.fd = out->cambuf->dmaBufFd();
+    rgaout.handle = out->cambuf->dmaBufRgaFd();
     if (out->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
         out->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
         out->cambuf->format() == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
@@ -2604,6 +2642,9 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
                          0, 0, out->cambuf->width(), out->cambuf->height());
     }
 #endif
+    if(rgaout.release_fence_fd != -1){
+        out->cambuf->setRgaFenceFd(rgaout.release_fence_fd);
+    }
     return OK;
 }
 

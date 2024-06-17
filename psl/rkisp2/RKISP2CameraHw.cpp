@@ -27,6 +27,7 @@
 #include "RKISP2ControlUnit.h"
 #include "RKISP2PSLConfParser.h"
 // #include "TuningServer.h"
+#include "RgaCropScale.h"
 
 
 namespace android {
@@ -171,6 +172,7 @@ RKISP2CameraHw::deInit()
     // if(mTuningServer) {
     //     mTuningServer->deinit();
     // }
+    RgaCropScale::GetInstance()->releaseRgaBufferHandle(mCameraId);
 }
 
 const camera_metadata_t *
@@ -433,6 +435,7 @@ RKISP2CameraHw::configStreams(std::vector<camera3_stream_t*> &activeStreams,
     if (mStreamsVideo.empty()) {
         mUseCase = USECASE_STILL;
     }
+    RgaCropScale::GetInstance()->releaseRgaBufferHandle(mCameraId);
 
     LOGI("%s: select usecase: %s, video/still stream num: %zu/%zu", __FUNCTION__,
             mUseCase ? "USECASE_VIDEO" : "USECASE_STILL", mStreamsVideo.size(), mStreamsStill.size());

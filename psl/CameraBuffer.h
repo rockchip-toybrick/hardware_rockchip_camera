@@ -123,6 +123,9 @@ public:
         //arc::CameraBufferManager* bufManager = arc::CameraBufferManager::GetInstance();
         return mType == BUF_TYPE_HANDLE ? mHandleBufFd: mDmaBufFd;
     }
+    int dmaBufRgaFd() {
+	    return mDmaBufRgaFd;
+    }
     int status() { return mUserBuffer.status; }
 
     //////////////////////////////////////////////////////////////////////////
@@ -150,7 +153,10 @@ public:
     //////////////////////////////////////////////////////////////////////////
 
     status_t captureDone(std::shared_ptr<CameraBuffer> buffer, bool signalFence = true);
-
+    void setRgaFenceFd(int fd);
+    int getRgaFenceFd(){
+        return this->mRgaFenceFd;
+    }
 private:
     status_t registerBuffer();
     status_t deregisterBuffer();
@@ -184,7 +190,10 @@ private:
 
     int mCameraId;
     int mDmaBufFd;                    /*!< file descriptor for dmabuf */
+    int mDmaBufRgaFd;
+    int mRgaFenceFd;
     int mHandleBufFd;
+    bool mOutputBuffer;
 };
 
 namespace MemoryUtils {

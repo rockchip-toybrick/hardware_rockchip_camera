@@ -19,11 +19,9 @@
 #include <RockchipRga.h>
 #if defined(ANDROID_VERSION_ABOVE_12_X)
 #include <hardware/hardware_rockchip.h>
+#include <im2d_api/im2d.hpp>
 #endif
-#if defined(ANDROID_VERSION_ABOVE_12_X)
-#include <im2d_api/im2d.h>
-//#include <im2d_api/im2d_buffer.h>
-#endif
+#include "arc/camera_buffer_manager.h"
 
 #define LOG_TAG "RgaCropScale"
 
@@ -301,8 +299,21 @@ release_buffer:
     return ret;
 }
 
+RgaCropScale* RgaCropScale::GetInstance(){
+    static RgaCropScale instance;
+    return &instance;
+}
+
 int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
 {
+	HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    int ret = CropScaleNV12Or21Async(in,out);
+    if (ret == IM_STATUS_SUCCESS )
+    {
+        return 0;
+    }
+#endif
 	rga_info_t src, dst;
 #if defined(ANDROID_VERSION_ABOVE_12_X)
 	rga_buffer_handle_t src_handle;
@@ -473,6 +484,7 @@ int RgaCropScale::CropScaleNV12Or21(struct Params* in, struct Params* out)
 
 /* split buffer to left right to do crop scale */
 int RgaCropScale::WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout) {
+    HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
                 /* test start */
     char *src = rgain->vir_addr;
     char *dst = rgaout->vir_addr;
@@ -503,7 +515,10 @@ int RgaCropScale::WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Para
         ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do second split copy/ scale", __FUNCTION__);
 
 
@@ -513,6 +528,10 @@ int RgaCropScale::WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Para
     if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
         ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
         return -1;
+    }
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
     }
     ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
     return 0;
@@ -554,7 +573,10 @@ int RgaCropScale::HeightSplit_CropScaleNV12Or21(struct Params* rgain, struct Par
         ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do second split copy/ scale", __FUNCTION__);
 
     rgain->offset_y = in_offset_y + in_h / 2;
@@ -563,6 +585,10 @@ int RgaCropScale::HeightSplit_CropScaleNV12Or21(struct Params* rgain, struct Par
     if (RgaCropScale::CropScaleNV12Or21(rgain, rgaout)) {
         ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
         return -1;
+    }
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
     }
     ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
     return 0;
@@ -611,7 +637,10 @@ int RgaCropScale::WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params*
         ALOGE("@%s: first split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do right top split copy/ scale", __FUNCTION__);
     rgain->offset_x = in_offset_x + in_w / 2;
     rgain->offset_y = in_offset_y;
@@ -627,7 +656,10 @@ int RgaCropScale::WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params*
         ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do left bottom split copy/ scale", __FUNCTION__);
     rgain->offset_x = in_offset_x;
     rgain->offset_y = in_offset_y + in_h / 2;
@@ -643,7 +675,10 @@ int RgaCropScale::WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params*
         ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do right bottom split copy/ scale", __FUNCTION__);
     rgain->offset_x = in_offset_x + in_w / 2;
     rgain->offset_y = in_offset_y + in_h / 2;
@@ -659,9 +694,183 @@ int RgaCropScale::WHSplit_CropScaleNV12Or21(struct Params* rgain, struct Params*
         ALOGE("@%s: second split copy/scale failed!", __FUNCTION__);
         return -1;
     }
-
+    if(rgaout->release_fence_fd != -1 ){
+        RgaCropScale::WaitFenceDone(rgaout->release_fence_fd);
+        rgaout->release_fence_fd = -1;
+    }
     ALOGD("@%s: do split copy/scale end!", __FUNCTION__);
     return 0;
+}
+
+
+int RgaCropScale::CropScaleNV12Or21Async(struct Params* in, struct Params* out)
+{
+    HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
+    int ret = 0;
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    im_rect         src_rect;
+    im_rect         dst_rect;
+    rga_buffer_t     src;
+    rga_buffer_t     dst;
+
+    memset(&src_rect, 0, sizeof(src_rect));
+    memset(&dst_rect, 0, sizeof(dst_rect));
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0, sizeof(dst));
+    out->release_fence_fd = -1;
+
+    im_handle_param_t param_in,param_out;
+
+    rga_buffer_handle_t src_handle;
+    rga_buffer_handle_t dst_handle;
+    param_in.width = in->width_stride;
+    param_in.height = in->height_stride;
+    param_in.format = in->fmt;
+
+    param_out.width = out->width_stride;
+    param_out.height = out->height_stride;
+    param_out.format = out->fmt;
+
+    if (in->handle != -1)
+    {
+       src_handle = in->handle;
+    } else if (in->fd == -1) {
+        src_handle = importbuffer_virtualaddr((void*)in->vir_addr, &param_in);
+    } else {
+        src_handle = importbuffer_fd(in->fd, &param_in);
+    }
+
+    if (out->handle != -1)
+    {
+       dst_handle = out->handle;
+    } else if (out->fd == -1) {
+        dst_handle = importbuffer_virtualaddr((void*)out->vir_addr, &param_out);
+    } else {
+        dst_handle = importbuffer_fd(out->fd, &param_out);
+    }
+
+    src = wrapbuffer_handle(src_handle, in->width_stride, in->height_stride, in->fmt);
+    dst = wrapbuffer_handle(dst_handle, out->width_stride, out->height_stride, out->fmt);
+
+    if(src.width == 0 || dst.width == 0)
+    {
+        if (in->handle == -1){
+            releasebuffer_handle(src_handle);
+        }
+        if (out->handle == -1){
+            releasebuffer_handle(dst_handle);
+        }
+        return -1;
+    }
+
+    im_opt_t opt;
+    rga_buffer_t pat;
+    im_rect srect;
+    im_rect drect;
+    im_rect prect;
+    int usage = 0;
+    srect.x = in->offset_x;
+    srect.y = in->offset_y;
+    srect.width = in->width;
+    srect.height = in->height;
+    drect.x = out->offset_x;
+    drect.y = out->offset_y;
+    drect.width = out->width;
+    drect.height = out->height;
+    usage |= IM_ASYNC;
+    if (in->mirror)
+    {
+        usage |= IM_HAL_TRANSFORM_FLIP_H;
+    }
+    if (in->flip)
+    {
+        usage |= IM_HAL_TRANSFORM_FLIP_V;
+    }
+    if (in->acquire_fence_fd != -1)
+    {
+       imsync(in->acquire_fence_fd);
+    }
+    ret = improcess(src, dst, {}, srect, drect, {}, -1, &out->release_fence_fd, NULL, usage);
+    if (ret != IM_STATUS_SUCCESS) {
+        ALOGE("%s improcess failed, %s\n", LOG_TAG, imStrError((IM_STATUS)ret));
+    }
+
+    if (in->handle == -1){
+        releasebuffer_handle(src_handle);
+    }
+    if (out->handle == -1){
+        releasebuffer_handle(dst_handle);
+    }
+	LOGD("%s improcess ret = %d in.handle:%d out.handle:%d acquire_fence_fd:%d release_fence_fd:%d\n", __FUNCTION__, ret,in->handle,out->handle,in->acquire_fence_fd,out->release_fence_fd);
+#endif
+    return ret;
+}
+
+int RgaCropScale::WaitFenceDone(int in_fence_fd){
+    int ret = 0;
+    HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
+
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    ret = imsync(in_fence_fd);
+    if (ret != IM_STATUS_SUCCESS) {
+        ALOGE("%s imsync failed, %s\n", LOG_TAG, imStrError((IM_STATUS)ret));
+    }
+#endif
+	LOGD("%s imsync ret = %d in_fence_fd:%d\n", __FUNCTION__, ret,in_fence_fd);
+
+    return ret;
+}
+
+int RgaCropScale::getRgaBufferHandle(int cameraId, buffer_handle_t handle, int width, int height, int format){
+    //LOGD("%s cameraId = %d, handle = %d, width = %d, height = %d, format = %d\n", __FUNCTION__, cameraId, handle, width, height, format);
+    int dmaBufRgaFd = -1;
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    std::lock_guard<std::mutex> l(lock_);
+    auto context_it = rga_buffer_context_.find(handle);
+    if (context_it != rga_buffer_context_.end()) {
+        return context_it->second->handle;
+    }
+    int dmaFd = arc::CameraBufferManager::GetInstance()->GetHandleFd(handle);
+    std::unique_ptr<RgaBufferContext> rga_buffer_context(new struct RgaBufferContext);
+    im_handle_param_t param;
+    param.width = width;
+    param.height = height;
+    if (V4L2_PIX_FMT_NV12 == format)
+    {
+        param.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    }else{
+        param.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+    }
+    dmaBufRgaFd = importbuffer_fd(dmaFd, &param);
+    rga_buffer_context->cameraId = cameraId;
+    rga_buffer_context->dmaFd = dmaFd;
+    rga_buffer_context->handle = dmaBufRgaFd;
+    rga_buffer_context->width = width;
+    rga_buffer_context->height = height;
+    rga_buffer_context->format = format;
+
+    rga_buffer_context_[handle] = std::move(rga_buffer_context);
+    LOGD("%s import new rga buffer handle = %p dmaFd:%d dmaBufRgaFd:%d, width = %d, height = %d, format = %d\n", __FUNCTION__, handle, dmaFd, dmaBufRgaFd, width, height, format);
+#endif
+    return dmaBufRgaFd;
+}
+
+void RgaCropScale::releaseRgaBufferHandle(int cameraId){
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    std::lock_guard<std::mutex> l(lock_);
+    std::vector<buffer_handle_t> handles;
+
+    for (const auto& context : rga_buffer_context_) {
+        if (context.second->cameraId == cameraId) {
+            handles.push_back(context.first);
+            LOGD("%s cameraId:%d release rga buffer handle = %p dmaFd = %d rga handle = %d\n", __FUNCTION__, cameraId, context.first, context.second->dmaFd, context.second->handle);
+            releasebuffer_handle(context.second->handle);
+        }
+    }
+    for (const auto& handle : handles) {
+        rga_buffer_context_.erase(handle);
+    }
+#endif
 }
 
 } /* namespace camera2 */

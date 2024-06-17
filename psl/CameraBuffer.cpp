@@ -29,6 +29,11 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <algorithm>
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+#include <hardware/hardware_rockchip.h>
+#include "im2d_api/im2d.h"
+#include "RgaCropScale.h"
+#endif
 
 namespace android {
 namespace camera2 {
@@ -75,6 +80,8 @@ CameraBuffer::CameraBuffer() :  mWidth(0),
     CLEAR(mTimestamp);
     mUserBuffer.release_fence = -1;
     mUserBuffer.acquire_fence = -1;
+    mRgaFenceFd = -1;
+    mDmaBufRgaFd = -1;
 }
 
 /**
@@ -133,6 +140,8 @@ CameraBuffer::CameraBuffer(int w,
     CLEAR(mTimestamp);
     mUserBuffer.release_fence = -1;
     mUserBuffer.acquire_fence = -1;
+    mRgaFenceFd = -1;
+    mDmaBufRgaFd = -1;
 }
 
 /**
@@ -186,7 +195,8 @@ CameraBuffer::CameraBuffer(int w, int h, int s, int fd, int dmaBufFd, int length
     CLEAR(mHandle);
     mUserBuffer.release_fence = -1;
     mUserBuffer.acquire_fence = -1;
-
+    mRgaFenceFd = -1;
+    mDmaBufRgaFd = -1;
     mDataPtr = mmap(nullptr, length, prot, flags, fd, offset);
     if (CC_UNLIKELY(mDataPtr == MAP_FAILED)) {
         LOGE("Failed to MMAP the buffer %s", strerror(errno));
@@ -194,6 +204,23 @@ CameraBuffer::CameraBuffer(int w, int h, int s, int fd, int dmaBufFd, int length
         return;
     }
     LOGI("mmaped address for %p length %d", mDataPtr, mSize);
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    im_handle_param_t param;
+	param.width = mWidth;
+	param.height = mHeight;
+    if (V4L2_PIX_FMT_NV12 == mV4L2Fmt)
+    {
+        param.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    }else{
+        param.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+    }
+    mDmaBufRgaFd = importbuffer_fd(mDmaBufFd, &param);
+    if(mDmaBufRgaFd == 0){
+        LOGE("Failed to import buffer mDmaBufFd:%d mDmaBufRgaFd:%d", mDmaBufFd,mDmaBufRgaFd);
+        mDmaBufRgaFd = -1;
+    }
+    LOGI("%s buf:%p mHandle:%p mType:%d mDmaBufFd:%d mDmaBufRgaFd:%d",__PRETTY_FUNCTION__,this,mHandle,mType, mDmaBufFd, mDmaBufRgaFd);
+#endif
 }
 
 /**
@@ -225,7 +252,7 @@ status_t CameraBuffer::init(const camera3_stream_buffer *aBuffer, int cameraId)
     mDataPtr = nullptr;
     mUserBuffer = *aBuffer;
     captureDoned = false;
-
+    mOutputBuffer = true;
     char fenceName[32] = {};
     snprintf(fenceName, sizeof(fenceName),
         "%dx%d_%s_%d", mWidth, mHeight, v4l2Fmt2Str(mV4L2Fmt), cameraId);
@@ -248,9 +275,15 @@ status_t CameraBuffer::init(const camera3_stream_buffer *aBuffer, int cameraId)
     }
     mV4L2Fmt = mGbmBufferManager->GetV4L2PixelFormat(mHandle);
     mHandleBufFd = mGbmBufferManager->GetHandleFd(mHandle);
-    LOGI("@%s, mHandle:%p, mHandlePtr:%p, mHandleBufFd:%d, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s, reqId:%d",
-        __FUNCTION__, mHandle, mHandlePtr, mHandleBufFd, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt), mRequestID);
+    LOGI("@%s,aBuffer:%p mHandle:%p, mHandlePtr:%p, mHandleBufFd:%d, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s, reqId:%d",
+        __FUNCTION__,aBuffer, mHandle, mHandlePtr, mHandleBufFd, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt), mRequestID);
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    int rgaFd = RgaCropScale::GetInstance()->getRgaBufferHandle(cameraId, mHandle, mWidth, mHeight, mV4L2Fmt);
 
+    LOGI("%s buf:%p mHandle:%p mType:%d mDmaBufFd:%d dmaBufFd:%d mDmaBufRgaFd:%d rgaFd:%d",__PRETTY_FUNCTION__,this, mHandle, mType, mDmaBufFd, mHandleBufFd,mDmaBufRgaFd,rgaFd);
+    mDmaBufFd = mHandleBufFd;
+    mDmaBufRgaFd = rgaFd;
+#endif
     int ret = registerBuffer();
     LOGI("@%s,after register mHandle:%p, mHandlePtr:%p",__FUNCTION__, mHandle, mHandlePtr);
 
@@ -258,7 +291,6 @@ status_t CameraBuffer::init(const camera3_stream_buffer *aBuffer, int cameraId)
         mUserBuffer.status = CAMERA3_BUFFER_STATUS_ERROR;
         return UNKNOWN_ERROR;
     }
-
     /* TODO: add some consistency checks here and return an error */
     return NO_ERROR;
 }
@@ -292,12 +324,31 @@ status_t CameraBuffer::init(const camera3_stream_t* stream,
     CLEAR(mUserBuffer);
     mUserBuffer.acquire_fence = -1;
     mUserBuffer.release_fence = -1;
-
+    mRgaFenceFd = -1;
     // hal internal buffer, just lock it and unlock in destruct function
     // mSize filled here
     lock();
+
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    if (mHandle != nullptr) {
+        mDmaBufFd = mGbmBufferManager->GetHandleFd(mHandle);
+        im_handle_param_t param;
+        param.width = mWidth;
+        param.height = mHeight;
+        if (V4L2_PIX_FMT_NV12 == mV4L2Fmt)
+        {
+            param.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+        }else{
+            param.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+        }
+        mDmaBufRgaFd = importbuffer_fd(mDmaBufFd, &param);
+        LOGI("%s buf:%p mHandle:%p mType:%d mDmaBufFd:%d mDmaBufRgaFd:%d",__PRETTY_FUNCTION__,this, mHandle, mType, mDmaBufFd, mDmaBufRgaFd);
+    }
+#endif
+
     LOGI("@%s, mHandle:%p, mHandleBufFd:%d, mFormat:%d, mWidth:%d, mHeight:%d, mStride:%d, mSize:%d, V4l2Fmt:%s",
         __FUNCTION__, mHandle, mHandleBufFd, mFormat, mWidth, mHeight, mStride, mSize, v4l2Fmt2Str(mV4L2Fmt));
+
 
     return NO_ERROR;
 }
@@ -310,7 +361,6 @@ status_t CameraBuffer::deinit()
 CameraBuffer::~CameraBuffer()
 {
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
-
     if (mInit) {
         switch(mType) {
         case BUF_TYPE_MALLOC:
@@ -337,7 +387,15 @@ CameraBuffer::~CameraBuffer()
             break;
         }
     }
-    LOGI("%s destroying buf %p", __FUNCTION__, this);
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    if (mDmaBufRgaFd != -1 && !mOutputBuffer)
+    {
+        releasebuffer_handle(mDmaBufRgaFd);
+    }
+    LOGI("%s destroying buf %p mHandle:%p mType:%d mDmaBufFd:%d mDmaBufRgaFd:%d", __FUNCTION__, this, mHandle, mType, mDmaBufFd, mDmaBufRgaFd);
+#endif
+
+    LOGI("%s destroying buf %p mType:%d ", __FUNCTION__, this, mType);
 }
 
 status_t CameraBuffer::waitOnAcquireFence()
@@ -376,10 +434,19 @@ status_t CameraBuffer::getFence(camera3_stream_buffer* buf)
 
     buf->acquire_fence = mUserBuffer.acquire_fence;
     buf->release_fence = mUserBuffer.release_fence;
+    if (mRgaFenceFd != -1 && buf->release_fence != -1)
+    {
+        ::close(buf->release_fence);
+        buf->release_fence = mRgaFenceFd;
+    }
 
+    //ALOGE("%s buf->acquire_fence:%d buf->release_fence:%d mRgaFenceFd:%d",__FUNCTION__,buf->acquire_fence,buf->release_fence,mRgaFenceFd);
     return NO_ERROR;
 }
 
+void CameraBuffer::setRgaFenceFd(int fd){
+    this->mRgaFenceFd = fd;
+}
 status_t CameraBuffer::registerBuffer()
 {
 #ifdef RK_GRALLOC_4
@@ -403,6 +470,7 @@ status_t CameraBuffer::registerBuffer()
 
 status_t CameraBuffer::deregisterBuffer()
 {
+    LOGI("%s  buf %p mHandle:%p mType:%d mDmaBufFd:%d mDmaBufRgaFd:%d", __FUNCTION__, this, mHandle, mType, mDmaBufFd, mDmaBufRgaFd);
     if (mRegistered) {
         int ret = mGbmBufferManager->Deregister(mHandle);
         if (ret) {

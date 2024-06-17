@@ -257,14 +257,6 @@ status_t RKISP2OutputFrameWorker::prepareRun(std::shared_ptr<DeviceMessage> msg)
     } else if ((mName == "RawWork") && mStream) {
         LOGI("@%s : Dump raw enabled", __FUNCTION__);
         mPollMe = true;
-    } else if ((mName == "MainWork") && mStream) {
-        LOGI("@%s : stream %p  MainWork for BLOB!",
-            __FUNCTION__, mStream);
-        mPollMe = true;
-    } else if ((mName == "SelfWork") && mStream) {
-        LOGI("@%s : stream %p  SelfWork for BLOB!",
-            __FUNCTION__, mStream);
-        mPollMe = true;
     } else {
         LOGD("No work for this worker mStream: %p", mStream);
         mPollMe = false;
@@ -565,7 +557,8 @@ RKISP2OutputFrameWorker::prepareBuffer(std::shared_ptr<CameraBuffer>& buffer)
     CheckError((buffer.get() == nullptr), UNKNOWN_ERROR, "null buffer!");
 
     status_t status = NO_ERROR;
-    if (!buffer->isLocked()) {
+    // use dmafd or rga handle instead virtual address, virtual address will use for jpegEncoder only.
+    if (!buffer->isLocked() && buffer->format() == HAL_PIXEL_FORMAT_BLOB) {
         status = buffer->lock();
         if (CC_UNLIKELY(status != NO_ERROR)) {
             LOGE("Could not lock the buffer error %d", status);
