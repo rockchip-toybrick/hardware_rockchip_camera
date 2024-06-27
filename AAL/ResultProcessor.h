@@ -176,7 +176,6 @@ private:  /* methods */
     void returnPendingPartials(RequestState_t *reqState);
     void returnShutterDone(RequestState_t *reqState);
     void returnRequestError(int reqId);
-    void returnDeviceError(int reqId);
     status_t returnStoredPartials(void);
     status_t returnResult(RequestState_t* reqState, int returnIndex);
     void processCaptureResult(RequestState_t* reqState, camera3_capture_result* result);
@@ -199,7 +198,6 @@ private:  /* members */
     /*!> Sorted List of request id's that have metadata ready for return.
          The metadata for that request id should be present in the mRequestInTransit vector. */
     std::list<int> mRequestsPendingMetaReturn;
-    bool mDevError;
 };
 
 } NAMESPACE_DECLARATION_END

@@ -519,7 +519,6 @@ status_t RequestThread::flush(void)
 {
     // signal the PSL it should flush requests. PSL are free to complete the
     // results as they want to (with.
-    ALOGI("@%s, start, mRequestsInHAL:%d", __FUNCTION__, mRequestsInHAL);
 
     mCameraHw->flush();
 

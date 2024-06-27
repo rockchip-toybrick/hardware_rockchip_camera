@@ -33,8 +33,7 @@ ResultProcessor::ResultProcessor(RequestThread * aReqThread,
     mCallbackOps(cbOps),
     mThreadRunning(true),
     mPartialResultCount(0),
-    mNextRequestId(0),
-    mDevError(false)
+    mNextRequestId(0)
 {
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
     mReqStatePool.init(MAX_REQUEST_IN_TRANSIT);
@@ -640,8 +639,7 @@ status_t ResultProcessor::recycleRequest(Camera3Request *req)
  */
 void ResultProcessor::returnRequestError(int reqId)
 {
-    HAL_TRACE_CALL(CAM_GLBL_DBG_ERR);
-    LOGE("%s for <Request : %d", __FUNCTION__, reqId);
+    LOGD("%s for <Request : %d", __FUNCTION__, reqId);
 
     camera3_notify_msg msg;
     CLEAR(msg);
@@ -652,28 +650,9 @@ void ResultProcessor::returnRequestError(int reqId)
     mCallbackOps->notify(mCallbackOps, &msg);
 }
 
-/**
- * A serious failure occured. No further frames or buffer streams will
- * be produced by the device. Device should be treated as closed. The
- * client must reopen the device to use it again. The frame_number field
- * is unused.
- */
-void ResultProcessor::returnDeviceError(int reqId)
-{
-    HAL_TRACE_CALL(CAM_GLBL_DBG_ERR);
-    LOGE("%s for <Request : %d", __FUNCTION__, reqId);
-    camera3_notify_msg msg;
-    CLEAR(msg);
-    msg.type = CAMERA3_MSG_ERROR;
-    msg.message.error.frame_number = reqId;
-    msg.message.error.error_stream = nullptr;
-    msg.message.error.error_code = CAMERA3_MSG_ERROR_DEVICE;
-    mCallbackOps->notify(mCallbackOps, &msg);
-}
-
 status_t ResultProcessor::deviceError(void)
 {
-    HAL_TRACE_CALL(CAM_GLBL_DBG_ERR);
+    HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
     Message msg;
     msg.id = MESSAGE_ID_DEVICE_ERROR;
 
@@ -682,21 +661,12 @@ status_t ResultProcessor::deviceError(void)
 
 void ResultProcessor::handleDeviceError(void)
 {
-    HAL_TRACE_CALL(CAM_GLBL_DBG_ERR);
-    Camera3Request* request = NULL;
-    camera3_capture_result_t result;
-    RequestState_t* reqState = nullptr;
-
-    while ((mRequestsInTransit.size()) > 0) {
-        reqState = mRequestsInTransit.begin()->second;
-        request = reqState->request;
-        returnDeviceError(request->getId());
-        recycleRequest(request);
-        LOGD("@%s: mRequestsInTransit.size()(%d)", __FUNCTION__, mRequestsInTransit.size());
-    }
-
+    camera3_notify_msg msg;
+    CLEAR(msg);
+    msg.type = CAMERA3_MSG_ERROR;
+    msg.message.error.error_code = CAMERA3_MSG_ERROR_DEVICE;
+    mCallbackOps->notify(mCallbackOps, &msg);
     LOGD("@%s done", __FUNCTION__);
 }
-
 //----------------------------------------------------------------------------
 } NAMESPACE_DECLARATION_END
