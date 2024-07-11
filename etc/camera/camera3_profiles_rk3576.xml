@@ -1484,7 +1484,7 @@
             <sensor.baseGainFactor value="0,1"/> <!-- HAL may override this value from CMC for RAW sensors -->
             <sensor.blackLevelPattern value="0,0,0,0"/>
             <sensor.maxAnalogSensitivity value="2400"/> <!-- HAL may override this value from CMC for RAW sensors -->
-            <sensor.orientation value="90"/>
+            <sensor.orientation value="270"/>
             <sensor.profileHueSatMapDimensions value="0,0,0"/>
             <sensor.availableTestPatternModes value="OFF,COLOR_BARS"/>
             <!-- Info -->
