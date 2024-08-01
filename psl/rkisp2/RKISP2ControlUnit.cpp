@@ -604,7 +604,8 @@ RKISP2ControlUnit::RKISP2ControlUnit(RKISP2ImguUnit *thePU,
         mSocCamFlashCtrUnit(nullptr),
         mStillCapSyncNeeded(0),
         mStillCapSyncState(STILL_CAP_SYNC_STATE_TO_ENGINE_IDLE),
-        mFlushForUseCase(FLUSH_FOR_NOCHANGE)
+        mFlushForUseCase(FLUSH_FOR_NOCHANGE),
+        mLastFaceReqId(-1)
 {
     cl_result_callback_ops::metadata_result_callback = &sMetadatCb;
     mExposureTimens = 1000; //0.001ms
@@ -615,6 +616,8 @@ RKISP2ControlUnit::RKISP2ControlUnit(RKISP2ImguUnit *thePU,
     mSensitivity = 100; //gain 1x
     mIsPreConfigDone = false;
     mEnvSensorEnable = 0;
+    /* just for process faceDetection info */
+    mImguUnit->setWorkerCallback(this);
 }
 
 status_t
@@ -865,6 +868,8 @@ RKISP2ControlUnit::init()
     mCaptureUnitSettingsPool.init(SETTINGS_POOL_SIZE + 2);
     mProcUnitSettingsPool.init(SETTINGS_POOL_SIZE, RKISP2ProcUnitSettings::reset);
 
+    mFaceMetas.clear();
+    mLastFaceReqId = -1;
     mSettingsHistory.clear();
 
     /* Set digi gain support */
@@ -995,6 +1000,8 @@ RKISP2ControlUnit::~RKISP2ControlUnit()
 {
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
 
+    mFaceMetas.clear();
+    mLastFaceReqId = -1;
     mSettingsHistory.clear();
     if (mExposureTimens == 1000) {
         LOGE("@%s: invalid exposure time", __FUNCTION__);
@@ -1038,6 +1045,8 @@ RKISP2ControlUnit::configStreams(std::vector<camera3_stream_t*> &activeStreams, 
         mLatestRequestId = -1;
         mStilCapPreCapreqId = -1;
         mWaitingForCapture.clear();
+        mFaceMetas.clear();
+        mLastFaceReqId = -1;
         mSettingsHistory.clear();
         mIsStillChangeStream = isStillStream;
         struct rkisp_cl_prepare_params_s prepareParams;
@@ -1954,6 +1963,8 @@ RKISP2ControlUnit::handleMessageFlush(Message &msg)
     mImguUnit->flush();
 
     mWaitingForCapture.clear();
+    mFaceMetas.clear();
+    mLastFaceReqId = -1;
     mSettingsHistory.clear();
 
     return NO_ERROR;
@@ -2072,6 +2083,13 @@ RKISP2ControlUnit::metadataReceived(int id, const camera_metadata_t *metas, int 
     status_t status = NO_ERROR;
     camera_metadata_entry entry;
     static std::map<int,uint8_t> sLastAeStateMap;
+
+    // FaceDetation result callback
+    if (id == -555) {
+        //std::lock_guard<std::mutex> l(mFaceMetacLock);
+        //mFaceMetas.push_back(metas);
+        return status;
+    }
 
     /* id = -2, just for sync sof for flash control */
     if (-2 == id) {
@@ -2222,6 +2240,10 @@ RKISP2ControlUnit::handleMetadataReceived(Message &msg) {
     //3. some items like sensor timestamp from shutter
     reqState->ctrlUnitResult->append(msg.metas);
     reqState->mClMetaReceived = true;
+
+    // TO Do
+    //appendFaceDetationResult(reqState);
+
     if(reqState->mShutterMetaReceived) {
         mMetadata->writeRestMetadata(*reqState);
         reqState->request->notifyFinalmetaFilled();
@@ -2475,6 +2497,43 @@ RKISP2ControlUnit::getPreSettings(struct rkisp_cl_prepare_params_s *param)
 
 exit:
     return status;
+}
+
+void RKISP2ControlUnit::appendFaceDetationResult(std::shared_ptr<RKISP2RequestCtrlState> &reqState) {
+    int reqId = reqState->request->getId();
+    CameraMetadata* meta = reqState->ctrlUnitResult;
+
+    // check if faceDetation result is available or not.
+    if (!mFaceMetas.empty()) {
+        LOGD(" mFaceMetas.size():%d", mFaceMetas.size());
+        reqState->ctrlUnitResult->append(mFaceMetas[0]);
+        std::unique_lock<std::mutex> lk(mFaceMetacLock);
+        mFaceMetas.erase(mFaceMetas.begin());
+        lk.unlock();
+        mLastFaceReqId = reqId;
+        mLatestFaceMeta = mFaceMetas[0];
+    } else if (mLastFaceReqId != -1 && reqId - mLastFaceReqId <= 15) {
+        meta->append(mLatestFaceMeta);
+    } else {
+        camera_metadata_ro_entry entry;
+        const CameraMetadata* settings = reqState->request->getSettings();
+
+        entry = settings->find(ANDROID_STATISTICS_FACE_DETECT_MODE);
+        if (entry.count == 1) {
+            uint8_t faceDetectMode = entry.data.u8[0];
+            if (faceDetectMode != ANDROID_STATISTICS_FACE_DETECT_MODE_OFF) {
+                int32_t faceIds;
+                uint8_t faceScores;
+                int32_t faceRectangles;
+                int32_t faceLandmarks;
+
+                meta->update(ANDROID_STATISTICS_FACE_IDS, &faceIds, 0);
+                meta->update(ANDROID_STATISTICS_FACE_SCORES, &faceScores, 0);
+                meta->update(ANDROID_STATISTICS_FACE_RECTANGLES, &faceRectangles, 0);
+                meta->update(ANDROID_STATISTICS_FACE_LANDMARKS, &faceLandmarks, 0);
+            }
+        }
+    }
 }
 
 /**

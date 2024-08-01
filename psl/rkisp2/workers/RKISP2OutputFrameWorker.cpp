@@ -60,6 +60,12 @@ RKISP2OutputFrameWorker::~RKISP2OutputFrameWorker()
     mPostPipeline.reset();
 }
 
+void
+RKISP2OutputFrameWorker::setPipelineCallback(cl_result_callback_ops *callback)
+{
+    mPostPipeline->setMetaCallback(callback);
+}
+
 status_t
 RKISP2OutputFrameWorker::flushWorker()
 {

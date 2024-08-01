@@ -16,9 +16,13 @@
 
 #ifndef HAL_ROCKCHIP_PSL_RKISP1_RGACROPSCALE_H_
 #define HAL_ROCKCHIP_PSL_RKISP1_RGACROPSCALE_H_
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+#include <im2d_api/im2d.h>
+#endif
 
 namespace android {
 namespace camera2 {
+
 
 #if defined(TARGET_RK312X)
 #define RGA_VER (1.0)
@@ -68,7 +72,13 @@ class RgaCropScale {
         bool flip;
         int rotation;
     };
-
+    struct RkfaceRect {
+        int x, y, width, height;
+    };
+    static int RectCheck(struct Params* out, im_rect& rect);
+    static int ImDrawRectSingle(struct Params* out);
+    static int ImDrawRectArray(struct Params* out, im_rect *dst_rect, int array_size);
+    static int Im2dBlit(struct Params* in, struct Params* out);
     static int CropScaleNV12Or21(struct Params* in, struct Params* out);
     static int WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout);
     static int HeightSplit_CropScaleNV12Or21(struct Params* rgain, struct Params* rgaout);

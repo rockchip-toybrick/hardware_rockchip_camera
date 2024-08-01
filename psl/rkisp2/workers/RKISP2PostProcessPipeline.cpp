@@ -34,8 +34,23 @@
 #if defined(ANDROID_VERSION_ABOVE_12_X)
 #include <hardware/hardware_rockchip.h>
 #endif
+#include <assert.h>
+#define XCAM_ASSERT(exp)  assert(exp)
 
 #define ALIGN(value, x)	 ((value + (x-1)) & (~(x-1)))
+static struct RectFace faceTestRect[2] {
+    {
+     .x = 189,
+     .y = 65,
+     .width = 44,
+     .height = 44
+    },
+    {
+     .x = 110,
+     .y = 66,
+     .width = 42,
+     .height = 42
+    }};
 
 // disable mirror handling by default
 /* #define MIRROR_HANDLING_FOR_FRONT_CAMERA */
@@ -125,6 +140,7 @@ PostProcBufferPools::acquireItem() {
 }
 
 RKISP2PostProcessUnit::RKISP2PostProcessUnit(const char* name, int type, uint32_t buftype, RKISP2PostProcessPipeline* pl) :
+    mMetaCallback(nullptr),
     mInternalBufPool(new PostProcBufferPools()),
     mName(name),
     mBufType(buftype),
@@ -136,7 +152,8 @@ RKISP2PostProcessUnit::RKISP2PostProcessUnit(const char* name, int type, uint32_
     mPipeline(pl),
     mCurPostProcBufIn(nullptr),
     mCurProcSettings(nullptr),
-    mCurPostProcBufOut(nullptr) {
+    mCurPostProcBufOut(nullptr),
+    mIsLastProc(false) {
     LOGD("%s: @%s ", mName, __FUNCTION__);
 }
 
@@ -161,6 +178,12 @@ RKISP2PostProcessUnit::~RKISP2PostProcessUnit() {
     mCurPostProcBufIn.reset();
     mCurProcSettings.reset();
     mCurPostProcBufOut.reset();
+}
+
+void
+RKISP2PostProcessUnit::setMetaCallback(cl_result_callback_ops *callback)
+{
+    mMetaCallback = callback;
 }
 
 status_t
@@ -401,6 +424,9 @@ RKISP2PostProcessUnit::doProcess() {
 #ifdef RK_EPTZ
             processEptzFrame(mCurPostProcBufOut);
 #endif
+            LOGD("%s: @%s, mIsLastProc(%d) ", mName, __FUNCTION__, mIsLastProc);
+            if (mIsLastProc && mPipeline->mFacesnum)
+                drawFaceFrame(mCurPostProcBufOut);
             status = relayToNextProcUnit(status);
         }
         l.lock();
@@ -562,7 +588,7 @@ RKISP2PostProcessUnit::processFrame(const std::shared_ptr<PostProcBuffer>& in,
         rgaout.width_stride = out->cambuf->width();
         rgaout.height_stride = out->cambuf->height();
 
-#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+#if defined(TARGET_RK3562)
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
@@ -702,12 +728,64 @@ RKISP2PostProcessUnit::processEptzFrame(const std::shared_ptr<PostProcBuffer>& m
 }
 #endif
 
+status_t
+RKISP2PostProcessUnit::drawFaceFrame(const std::shared_ptr<PostProcBuffer>& out) {
+    LOGD("%s, @%s ", mName, __FUNCTION__);
+    HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
+    std::unique_lock<std::mutex> l(mFaceDetecLock, std::defer_lock);
+
+    if(!strcmp("JpegEnc", mName) || mBufType == 0){
+        ALOGI("rk-debug %s, name %s mBufType %d return", __FUNCTION__, mName, mBufType);
+        return OK;
+    }
+    RgaCropScale::Params rgaout;
+    rgaout.fd = out->cambuf->dmaBufFd();
+    if (out->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
+        out->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
+        out->cambuf->format() == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
+        out->cambuf->v4l2Fmt() == V4L2_PIX_FMT_NV12)
+        rgaout.fmt = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    else
+        rgaout.fmt = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+    rgaout.vir_addr = (char*)out->cambuf->data();
+    rgaout.width = out->cambuf->width();
+    rgaout.height = out->cambuf->height();
+    rgaout.offset_x = 0;
+    rgaout.offset_y = 0;
+    rgaout.width_stride = out->cambuf->width();
+    rgaout.height_stride = out->cambuf->height();
+
+    float zoom_w = (float)out->cambuf->width() / mPipeline->mFaceDetSize.width;
+    float zoom_h = (float)out->cambuf->height() / mPipeline->mFaceDetSize.height;;
+    LOGD("%s: zoom_w:%f, zoom_h: %f", mName, zoom_w, zoom_h);
+    int i;
+    im_rect FaceRect[MAX_FACE_COUNT] = {};
+
+    l.lock();
+    for (i = 0; i < mPipeline->mFacesnum; i++) {
+        FaceRect[i].x = (int32_t)(mPipeline->mFaceRect[i].x * zoom_w) & (~0x01);
+        FaceRect[i].y = (int32_t)(mPipeline->mFaceRect[i].y * zoom_h) & (~0x01);
+        FaceRect[i].width = (int32_t)(mPipeline->mFaceRect[i].width * zoom_w) & (~0x01);
+        FaceRect[i].height = (int32_t)(mPipeline->mFaceRect[i].height * zoom_h) & (~0x01);
+        LOGD("DetectWxH(%d,%d), face[%d][%d %d %d %d]",
+              mPipeline->mFaceDetSize.width, mPipeline->mFaceDetSize.height,i,
+              FaceRect[i].x, FaceRect[i].y,
+              FaceRect[i].width, FaceRect[i].height);
+
+    }
+    l.unlock();
+    RgaCropScale::ImDrawRectArray(&rgaout, FaceRect, mPipeline->mFacesnum);
+
+    return OK;
+}
+
 bool RKISP2PostProcessUnit::checkFmt(CameraBuffer* in, CameraBuffer* out) {
     return true;
 }
 
 RKISP2PostProcessPipeline::RKISP2PostProcessPipeline(RKISP2IPostProcessListener* listener,
                                          int camid) :
+    mMataCallback(nullptr),
     mPostProcFrameListener(listener),
     mCameraId(camid),
     mThreadRunning(false),
@@ -728,6 +806,11 @@ RKISP2PostProcessPipeline::~RKISP2PostProcessPipeline() {
     }
     mPostProcUnits.clear();
     mStreamToProcUnitMap.clear();
+}
+
+void
+RKISP2PostProcessPipeline::setMetaCallback(cl_result_callback_ops *callback) {
+    mMataCallback = callback;
 }
 
 status_t
@@ -792,19 +875,55 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
     LOGD("@%s enter", __FUNCTION__);
     status_t status = OK;
     int common_process_type = 0;
-    const camera_metadata_t *meta = PlatformData::getStaticMetadata(mCameraId);
+    //std::lock_guard<std::mutex> l(mLock);
     // analyze which process unit do we need
     mStreamToTypeMap.clear();
     std::vector<std::map<camera3_stream_t*, int>>& streams_post_proc = mStreamToTypeMap;
+    const camera_metadata_t *meta = PlatformData::getStaticMetadata(mCameraId);
+    camera_metadata_ro_entry entry = MetadataHelper::getMetadataEntry(meta,
+                                ANDROID_SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+    float max_digital_zoom = 1.0f;
+    MetadataHelper::getValueByType(entry, 0, &max_digital_zoom);
+
+#ifdef RK_FEC
+    if (max_digital_zoom > 1.0)
+       common_process_type |= kPostProcessTypeFec;
+#else
+    if (max_digital_zoom > 1.0)
+       common_process_type |= kPostProcessTypeDigitalZoom;
+#endif
 
     mMayNeedSyncStreamsOutput = streams.size() > 1;
-    /* TODO: from metadata */
-    common_process_type = 0;
+    const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
+    int orientation = PlatformData::orientation(mCameraId);
+    bool faceDetectSupport = cap->getFaceDetectSupport();
+    struct FrameSize_t faceSize = { 256, 192 };
+    ALOGD("@%s: faceDetectSupport(%d)",
+          __FUNCTION__, faceDetectSupport);
+
+    if(faceDetectSupport) {
+        struct FrameSize_t tempSize = cap->getSupportFaceSize();
+        if((tempSize.width > 0) && (tempSize.height > 0)) {
+            faceSize.width = tempSize.width;
+            faceSize.height = tempSize.height;
+            common_process_type |= kPostProcessTypeFaceDetection;
+            ALOGD("@%s: faceDetectSupport, orientation(%d), Facesize config(%dx%d)",
+                  __FUNCTION__, orientation, tempSize.width, tempSize.height);
+        }
+        mFaceDetectSupport = faceDetectSupport;
+        mFaceDetSize.width = faceSize.width;
+        mFaceDetSize.height = faceSize.height;
+        mFacesnum = 0;
+    }
 
     mUvc.width = in.width;
     mUvc.height = in.height;
 
     for (auto stream : streams) {
+        LOGI("@%s, CameraId:%d: stream %p :(%dx%d, fmt %s)", __FUNCTION__,
+             mCameraId, stream,  stream->width, stream->height,
+             METAID2STR(android_scaler_availableFormats_values, stream->format));
+
         int stream_process_type = 0;
         if(IsRawStream(stream)) {
             LOGD("@%s %d: add Raw unit for rawStream", __FUNCTION__, __LINE__);
@@ -821,30 +940,18 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
             continue;
         }
 
-        if (stream->format == HAL_PIXEL_FORMAT_BLOB)
-           stream_process_type |= kPostProcessTypeJpegEncoder;
+        if (stream->format == HAL_PIXEL_FORMAT_BLOB) {
+            stream_process_type |= kPostProcessTypeJpegEncoder;
+            if (streams.size() == 1)
+                common_process_type &= ~kPostProcessTypeFaceDetection;
+        }
+
         if (stream->width * stream->height != in.width * in.height)
            stream_process_type |= kPostProcessTypeScaleAndRotation;
+
         if (getRotationDegrees(stream))
            common_process_type |= kPostProcessTypeCropRotationScale;
 
-        // TuningServer *pserver = TuningServer::GetInstance();
-        // if (pserver && pserver->isTuningMode()){
-        //     if (stream->format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED){
-        //         streams_post_proc.push_back(std::map<camera3_stream_t*, int> {{&mUvc, kPostProcessTypeUVC}});
-        //     }
-        // }
-        camera_metadata_ro_entry entry = MetadataHelper::getMetadataEntry(meta,
-                                    ANDROID_SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
-        float max_digital_zoom = 1.0f;
-        MetadataHelper::getValueByType(entry, 0, &max_digital_zoom);
-#ifdef RK_FEC
-        if (max_digital_zoom > 1.0)
-           common_process_type |= kPostProcessTypeFec;
-#else
-        if (max_digital_zoom > 1.0)
-           common_process_type |= kPostProcessTypeDigitalZoom;
-#endif
 #ifdef MIRROR_HANDLING_FOR_FRONT_CAMERA
         //for front camera mirror handling, front camera preview do twice mirror
         if(PlatformData::facing(mCameraId) == CAMERA_FACING_FRONT) {
@@ -858,22 +965,25 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
     // add extra memcpy unit for streams if necessary
     int common_types_exclude_buffer_needed = common_process_type &
                                        ~NO_NEED_INTERNAL_BUFFER_PROCESS_TYPES;
+    LOGI("%s: streams_post_proc.size():%d, common_types_exclude_buffer_needed 0x%x",
+        __FUNCTION__, streams_post_proc.size(), common_types_exclude_buffer_needed);
+
     if (streams_post_proc.size() > 1 ||
        (streams_post_proc.size() == 1 && common_types_exclude_buffer_needed == 0)) {
-       for (auto &stream_type_map : streams_post_proc) {
-        int stream_process_type = stream_type_map.begin()->second;
-        if (stream_process_type == 0) {
-            stream_process_type |= kPostProcessTypeCopy;
-            stream_type_map[stream_type_map.begin()->first] = stream_process_type;
-            stream_type_map.begin()->second = stream_process_type;
-        }
-        if (stream_process_type & kPostProcessTypeCopy)
-            mIsNeedcached = true;
-        else
-            mIsNeedcached = false;
+        for (auto &stream_type_map : streams_post_proc) {
+            int stream_process_type = stream_type_map.begin()->second;
+            if (stream_process_type == 0) {
+                stream_process_type |= kPostProcessTypeCopy;
+                stream_type_map[stream_type_map.begin()->first] = stream_process_type;
+                stream_type_map.begin()->second = stream_process_type;
+            }
+            if (stream_process_type & kPostProcessTypeCopy)
+                mIsNeedcached = true;
+            else
+                mIsNeedcached = false;
 
-        LOGI("%s: stream %p process type 0x%x, mIsNeedcached(%d)", __FUNCTION__,
-            (stream_type_map.begin())->first, stream_process_type, mIsNeedcached);
+            LOGI("%s: stream %p process type 0x%x, mIsNeedcached(%d)", __FUNCTION__,
+                (stream_type_map.begin())->first, stream_process_type, mIsNeedcached);
        }
     } else {
         LOGW("%s: no need buffer copy for stream!", __FUNCTION__);
@@ -898,6 +1008,9 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
         LOGI("%s: the last common process unit is the same as stream's 0x%x.",
              __FUNCTION__, last_level_proc_common);
     }
+    LOGI("%s: the last common process unit is: 0x%x.",
+         __FUNCTION__, last_level_proc_common);
+
     /* if there exist buffer needed common processes or
      * main stream(always the first stream) is buffer needed,
      * then |needpostprocess| is true
@@ -912,7 +1025,7 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
     // link common proc units
     std::shared_ptr<RKISP2PostProcessUnit> procunit_from;
     std::shared_ptr<RKISP2PostProcessUnit> procunit_to;
-    std::shared_ptr<RKISP2PostProcessUnit> procunit_main_last;
+    std::shared_ptr<RKISP2PostProcessUnit> procunit_common_last;
 
     for (uint32_t i = 1; i < MAX_COMMON_PROC_UNIT_SHIFT; i++) {
         uint32_t test_type = 1 << i;
@@ -951,8 +1064,11 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
             case kPostProcessTypeFaceDetection :
                 process_unit_name = "faceDetection";
                 buf_type = RKISP2PostProcessUnit::kPostProcBufTypePre;
-                procunit_from = std::make_shared<RKISP2PostProcessUnit>
-                    (process_unit_name, test_type, buf_type, this);
+                procunit_from = std::make_shared<PostProcessUnitFaceDetect>
+                    (process_unit_name, test_type, faceSize, in, buf_type, mCameraId, this);
+                if (mMataCallback) {
+                    procunit_from->setMetaCallback(mMataCallback);
+                }
                 break;
             default:
                 LOGW("%s: have no common process.", __FUNCTION__);
@@ -962,8 +1078,8 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
                 if (test_type == kPostProcessTypeFaceDetection) {
                     procunit_to = nullptr;
                 } else {
-                    procunit_to = procunit_main_last;
-                    procunit_main_last = procunit_from;
+                    procunit_to = procunit_common_last;
+                    procunit_common_last = procunit_from;
                 }
                 LOGI("%s: add unit %s to %s, is the last proc unit %d",
                      __FUNCTION__, process_unit_name,
@@ -976,6 +1092,7 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
                     procunit_from->attachListener(mOutputBuffersHandler.get());
                     /* should exist only one stream */
                     mStreamToProcUnitMap[streams[0]] = procunit_from.get();
+                    procunit_from->mIsLastProc = true;
                 } else {
                     linkPostProcUnit(procunit_from, procunit_to,
                         procunit_to.get() ? kMiddleLevel : kFirstLevel);
@@ -988,7 +1105,7 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
 
     /* link the stream process units */
     for (auto proc_map : streams_post_proc) {
-        std::shared_ptr<RKISP2PostProcessUnit> procunit_stream_last = procunit_main_last;
+        std::shared_ptr<RKISP2PostProcessUnit> procunit_stream_last = procunit_common_last;
         // get the stream last process unit
         uint32_t last_level_proc_stream = 0;
         for (uint32_t i = MAX_COMMON_PROC_UNIT_SHIFT + 1;
@@ -1064,6 +1181,7 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
                     // link streams callback to last correspond procunit
                     procunit_from->attachListener(mOutputBuffersHandler.get());
                     mStreamToProcUnitMap[proc_map.begin()->first] = procunit_from.get();
+                    procunit_from->mIsLastProc = true;
                 } else {
                     linkPostProcUnit(procunit_from, procunit_to,
                         procunit_to.get() ? kMiddleLevel : kFirstLevel);
@@ -1082,8 +1200,8 @@ RKISP2PostProcessPipeline::prepare_internal(const FrameInfo& in,
     }
 
     for (int i = 0; i < RKISP2PostProcessPipeline::kMaxLevel; i++) {
-        for (auto iter : mPostProcUnitArray[i])
-            LOGI("level %d, unit %s", i, iter->mName);
+        for (auto iter : mPostProcUnitArray[i]) 
+            LOGI("%s: level %d, unit %s", __FUNCTION__, i, iter->mName);
     }
 
     LOGD("@%s exit", __FUNCTION__);
@@ -1674,7 +1792,7 @@ RKISP2PostProcessUnitJpegEnc::processFrame(const std::shared_ptr<PostProcBuffer>
     rgaout.offset_y = 0;
     rgaout.width_stride = tempBuf->cambuf->width();
     rgaout.height_stride = tempBuf->cambuf->height();
-#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+#if defined(TARGET_RK3562)
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
@@ -2426,7 +2544,7 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
     rgaout.width_stride = out->cambuf->width();
     rgaout.height_stride = out->cambuf->height();
 
-#if defined(TARGET_RK3576)||defined(TARGET_RK3562)
+#if defined(TARGET_RK3562)
     if ((out->cambuf->width() > RGA_ACTIVE_W) ||
         (out->cambuf->height() > RGA_ACTIVE_H)) {
         if ((out->cambuf->width() > RGA_ACTIVE_W) &&
@@ -2583,6 +2701,400 @@ RKISP2PostProcessUnitFec::processFrame(const std::shared_ptr<PostProcBuffer>& in
     }
 
     return OK;
+}
+
+PostProcessUnitFaceDetect::PostProcessUnitFaceDetect(
+    const char* name, int type, struct FrameSize_t faceSize,
+    const FrameInfo& in, uint32_t buftype, int camid, RKISP2PostProcessPipeline* pl)
+    : RKISP2PostProcessUnit(name, type, buftype, pl),
+    mMeta (NULL),
+    mCammetadata (NULL) {
+    int ret = 0;
+
+    mFaceDetecInit = false;
+    mCurOrintation = 0;
+    ret = initializeFaceDetect(faceSize.width, faceSize.height);
+    // mRGABuf = std::make_shared<PostProcBuffer> ();
+    // mRGABuf->cambuf = MemoryUtils::acquireOneBuffer(mPipeline->getCameraId(),
+    //            faceSize.width, faceSize.height, true);
+    pRgaoutbuf = (char*)malloc(mFaceDetecW*mFaceDetectH*3/2);
+    memset(pRgaoutbuf, 0, mFaceDetecW*mFaceDetectH*3/2);
+
+    mApa = PlatformData::getActivePixelArray(camid);
+    mMeta = allocate_camera_metadata(DEFAULT_ENTRY_CAP, DEFAULT_DATA_CAP);
+    XCAM_ASSERT(mMeta);
+    mCammetadata = new CameraMetadata(mMeta);
+
+    mFramecount = 0;
+}
+
+PostProcessUnitFaceDetect::~PostProcessUnitFaceDetect() {
+    deInitializeFaceDetect();
+    //mRGABuf.reset();
+    mFramecount = 0;
+    free(pRgaoutbuf);
+    /*free_camera_metadata(mMeta);*/
+    delete mCammetadata;
+    mCammetadata = NULL;
+    mMeta = NULL;
+
+}
+
+status_t PostProcessUnitFaceDetect::initializeFaceDetect(int width,int height) {
+	ALOGD("%s(%d): start",__FUNCTION__,__LINE__);
+    if (!mFaceDetecInit) {
+        // load face detection lib
+        dlerror();
+
+        mFaceDetectorFun.mLibFaceDetectLibHandle = dlopen("libcam_facedetection.so",
+                                                          RTLD_NOW);
+        if (mFaceDetectorFun.mLibFaceDetectLibHandle == NULL) {
+            LOGE("%s(%d): open libcam_facedetection.so fail", __FUNCTION__, __LINE__);
+            const char *errmsg;
+            if ((errmsg = dlerror()) != NULL) {
+                LOGE("dlopen fail errmsg: %s", errmsg);
+            }
+            return -1;
+        } else {
+            mFaceDetectorFun.mFaceDectStartFunc = (FaceDetector_start_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_start");
+
+            if (mFaceDetectorFun.mFaceDectStartFunc == NULL) {
+                LOGE("FaceDetector_start not found");
+                const char *errmsg;
+                if ((errmsg = dlerror()) != NULL) {
+                    LOGE("dlsym FaceDetector_start fail errmsg: %s", errmsg);
+                }
+                return -1;
+            }
+
+            mFaceDetectorFun.mFaceDectStopFunc = (FaceDetector_stop_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_stop");
+            mFaceDetectorFun.mFaceDectprepareFunc = (FaceDetector_prepare_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_prepare");
+            if (mFaceDetectorFun.mFaceDectprepareFunc == NULL) {
+                LOGE("FaceDetector_start not found");
+                const char *errmsg;
+                if ((errmsg = dlerror()) != NULL) {
+                    LOGE("dlsym FaceDetector_prepare fail errmsg: %s", errmsg);
+                }
+                return -1;
+            } else {
+                LOGE("dlsym FaceDetector_prepare success");
+            }
+
+            mFaceDetectorFun.mFaceDectFindFaceFun = (FaceDetector_findFaces_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_findFaces");
+            if (mFaceDetectorFun.mFaceDectFindFaceFun == NULL) {
+                LOGE("FaceDetector_start not found");
+                const char *errmsg;
+                if ((errmsg = dlerror()) != NULL) {
+                    LOGE("dlsym FaceDetector_start fail errmsg: %s", errmsg);
+                }
+                return -1;
+            } else {
+                LOGE("dlsym FaceDetector_find success");
+            }
+
+            mFaceDetectorFun.mFaceDetector_initizlize_func = (FaceDetector_initizlize_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_initizlize");
+            mFaceDetectorFun.mFaceDetector_destory_func = (FaceDetector_destory_func)
+                    dlsym(mFaceDetectorFun.mLibFaceDetectLibHandle, "FaceDetector_destory");
+
+            mFaceContext = (*mFaceDetectorFun.mFaceDetector_initizlize_func)(DETECTOR_OPENCL, 15.0f , 1);
+            if (mFaceContext) {
+                (*mFaceDetectorFun.mFaceDectStartFunc)(mFaceContext,width, height, IMAGE_YUV420SP);
+                mFaceDetecInit = true;
+            } else {
+                dlclose(mFaceDetectorFun.mLibFaceDetectLibHandle);
+                LOGE("%s(%d): open libface init fail",__FUNCTION__,__LINE__);
+				mFaceDetecInit = false;
+                return -1;
+            }
+        }
+    } else if (mFaceDetecW != width || mFaceDetectH != height) {
+        (*mFaceDetectorFun.mFaceDectStopFunc)(mFaceContext);
+        (*mFaceDetectorFun.mFaceDectStartFunc)(mFaceContext, width, height, IMAGE_YUV420SP);
+    }
+
+    mFaceDetecW = width;
+    mFaceDetectH = height;
+
+	ALOGD("@%s succes, mFaceDetecWxH(%dx%d) ",__FUNCTION__, mFaceDetecW, mFaceDetectH);
+    return 0;
+}
+
+void PostProcessUnitFaceDetect::deInitializeFaceDetect(){
+    if (mFaceDetecInit) {
+        (*mFaceDetectorFun.mFaceDectStopFunc)(mFaceContext);
+        (*mFaceDetectorFun.mFaceDetector_destory_func)(mFaceContext);
+        dlclose(mFaceDetectorFun.mLibFaceDetectLibHandle);
+        mFaceDetecInit = false;
+    }
+}
+
+status_t
+PostProcessUnitFaceDetect::faceScale(const std::shared_ptr<PostProcBuffer>& in,
+                                     const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
+    PERFORMANCE_ATRACE_CALL();
+    CameraWindow& crop = settings->cropRegion;
+
+    bool flip = false;
+    bool mirror = false;
+    int rotation = 0;
+    // check if zoom is required
+
+    // map crop window to in-buffer crop window
+    int mapleft, maptop, mapwidth, mapheight;
+    float wratio = (float)crop.width() / mApa.width();
+    float hratio = (float)crop.height() / mApa.height();
+    float hoffratio = (float)crop.left() / mApa.width();
+    float voffratio = (float)crop.top() / mApa.height();
+
+    mapleft = in->cambuf->width() * hoffratio;
+    maptop = in->cambuf->height() * voffratio;
+    mapwidth = in->cambuf->width() * wratio;
+    mapheight = in->cambuf->height() * hratio;
+    // should align to 2
+    mapleft &= ~0x1;
+    maptop &= ~0x1;
+    mapwidth &= ~0x3;
+    mapheight &= ~0x3;
+
+    // zoom camera preview buf
+    RgaCropScale::Params rgain, rgaout;
+
+    rgain.fd = in->cambuf->dmaBufFd();
+    // HAL_PIXEL_FORMAT_YCbCr_420_888 buffer layout is the same as NV12
+    // in gralloc module implementation
+    if (in->cambuf->format() == HAL_PIXEL_FORMAT_YCrCb_NV12 ||
+        in->cambuf->format() == HAL_PIXEL_FORMAT_YCbCr_420_888 ||
+        in->cambuf->v4l2Fmt() == V4L2_PIX_FMT_NV12) {
+        rgain.fmt = HAL_PIXEL_FORMAT_YCrCb_NV12;
+        rgaout.fmt = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    } else {
+        rgain.fmt = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+    }
+    rgain.vir_addr = (char*)in->cambuf->data();
+    rgain.mirror = false;
+    rgain.width = mapwidth;
+    rgain.height = mapheight;
+    rgain.offset_x = mapleft;
+    rgain.offset_y = maptop;
+    rgain.width_stride = in->cambuf->width();
+    rgain.height_stride = in->cambuf->height();
+
+    rgaout.fd = -1;
+    rgaout.vir_addr = pRgaoutbuf;
+    rgaout.mirror = false;
+    rgaout.width = mFaceDetecW;
+    rgaout.height = mFaceDetectH;
+    rgaout.offset_x = 0;
+    rgaout.offset_y = 0;
+    rgaout.width_stride = mFaceDetecW;
+    rgaout.height_stride = mFaceDetectH;
+
+    if (RgaCropScale::CropScaleNV12Or21(&rgain, &rgaout)) {
+        LOGW("%s: digital zoom by RGA failed, use arm instead...", __FUNCTION__);
+        PERFORMANCE_ATRACE_NAME("SWCropScale");
+        ImageScalerCore::cropComposeUpscaleNV12_bl(
+                         in->cambuf->data(), in->cambuf->height(), in->cambuf->width(),
+                         mapleft, maptop, mapwidth, mapheight,
+                         pRgaoutbuf, mFaceDetectH, mFaceDetecW,
+                         0, 0, mFaceDetecW, mFaceDetectH);
+    }
+
+    return 0;
+}
+
+status_t
+PostProcessUnitFaceDetect::processFrame(const std::shared_ptr<PostProcBuffer>& in,
+                                     const std::shared_ptr<PostProcBuffer>& out,
+                                     const std::shared_ptr<RKISP2ProcUnitSettings>& settings) {
+    PERFORMANCE_ATRACE_CALL();
+    status_t status = OK;
+    // to avoid the destruct of the in args
+    std::shared_ptr<CameraBuffer> cambuf = in->cambuf;
+    std::shared_ptr<PostProcBuffer> outBuf = out;
+    std::shared_ptr<RKISP2ProcUnitSettings> procsettings = settings;
+    uint32_t inBufReqId = mCurProcSettings->request->getId();
+    RgaCropScale::Params rgaout;
+    std::unique_lock<std::mutex> l(mFaceDetecLock, std::defer_lock);
+
+    mCurBiasAngle = FACEDETECT_INIT_BIAS;
+
+    LOGD("%s: @%s, reqId: %d",
+         mName, __FUNCTION__, inBufReqId);
+
+    const CameraMetadata* metas = procsettings->request->getSettings();
+    if (metas != NULL && (inBufReqId >= 0)) {
+        camera_metadata_ro_entry entry = metas->find(ANDROID_STATISTICS_FACE_DETECT_MODE);
+        if (entry.count == 1) {
+            uint8_t faceDetectMode = entry.data.u8[0];
+            if (faceDetectMode == ANDROID_STATISTICS_FACE_DETECT_MODE_OFF)
+                return OK;
+        }
+    }
+
+    LOGD("%s: @%s start, cambuf->v4l2Fmt(%s):mFramecount(%d)",
+         mName, __FUNCTION__, v4l2Fmt2Str(cambuf->v4l2Fmt()), mFramecount);
+
+     char property_value[PROPERTY_VALUE_MAX] = {0};
+     property_get("vendor.camera.face.frameskip", property_value, "3");
+     int frameskip= atoi(property_value);
+
+    if ((cambuf->v4l2Fmt() == V4L2_PIX_FMT_NV12) && (mFramecount%frameskip == 0)) {
+        const int MAX_ROI = 10;
+
+        // FaceDetection information
+        int numFaces = 0;
+        int hasSmileFace = 0;
+        struct RectFace *faceRects = NULL;
+
+        int i = 0;
+        nsecs_t startTime, middleTime, lastTime;
+        nsecs_t rgaConsumeTime, faceConsumeTime;
+
+        if (!mFaceDetecInit)
+            return -1;
+
+        startTime = systemTime(SYSTEM_TIME_MONOTONIC);
+
+        status = faceScale(in, settings);
+
+        middleTime = systemTime(SYSTEM_TIME_MONOTONIC);
+        rgaConsumeTime = middleTime - startTime;
+
+        LOGD("%s faceScale done", __FUNCTION__);
+        // normal case
+
+        //(*mFaceDetectorFun.mFaceDectprepareFunc)(mFaceContext, (void*)pRgaoutbuf);
+        //LOGD("%s mFaceDectprepareFunc done", __FUNCTION__);
+        (*mFaceDetectorFun.mFaceDectFindFaceFun)(mFaceContext, (void*)pRgaoutbuf, mCurOrintation, mCurBiasAngle,
+                        0, &hasSmileFace, &faceRects, &numFaces);
+#if 0
+        // test fix rectangle
+        numFaces = 2;
+        faceRects = (struct RectFace*)malloc(numFaces*sizeof(struct RectFace));
+        for (i = 0; i < numFaces; i++) {
+            faceRects[i].x = faceTestRect[i].x;
+            faceRects[i].y = faceTestRect[i].y;
+            faceRects[i].width = faceTestRect[i].width;
+            faceRects[i].height = faceTestRect[i].height;
+            LOGD("@%s: face[%d][%d %d %d %d]",
+                  mName, i,
+                  faceTestRect[i].x, faceTestRect[i].y,
+                  faceTestRect[i].width, faceTestRect[i].height);
+         }
+
+#endif
+        lastTime = systemTime(SYSTEM_TIME_MONOTONIC);
+        faceConsumeTime = lastTime - middleTime;
+        //dump YUV data
+        bool facedump_en = 0;
+        facedump_en = property_get_bool("vendor.camera.face.dumpenable", 0);
+
+        if (facedump_en) {
+            char filename[256] = {0};
+            sprintf(filename, "%scamera_dump_num_rgain_%dx%d_%d.yuv", "/data/camera/", cambuf->width(), cambuf->height(), mFramecount);
+
+            ALOGD("%s filename is %s", __FUNCTION__, filename);
+            FILE *fp = fopen (filename, "wb");
+            if (fp == nullptr) {
+                        LOGE("open file failed,%s",strerror(errno));
+                        return -1;
+            }
+            if ((fwrite(cambuf->data(),cambuf->width() * cambuf->height() * 3 / 2, 1, fp)) != 1)
+                LOGW("Error or short count writing %d bytes to %s", cambuf->width() * cambuf->height() * 3 / 2, filename);
+            fclose (fp);
+
+            sprintf(filename, "%scamera_dump_num_rgaout_%dx%d_%d.yuv", "/data/camera/", mFaceDetecW, mFaceDetectH, mFramecount);
+            ALOGD("%s filename is %s", __FUNCTION__, filename);
+            fp = fopen (filename, "wb");
+            if (fp == nullptr) {
+                    LOGE("open file failed,%s",strerror(errno));
+                    return -1;
+            }
+            if ((fwrite(pRgaoutbuf, mFaceDetecW * mFaceDetectH * 3 / 2, 1, fp)) != 1)
+                LOGW("Error or short count writing %d bytes to %s", mFaceDetecW * mFaceDetectH * 3 / 2, filename);
+            fclose (fp);
+        }
+
+        LOGD("FaceDetection orintation-%d input-dimens-%dx%d facenum-%d"
+             " rga-time-%lldms faceDetect-time-%lldms\n",
+              mCurOrintation, mFaceDetecW, mFaceDetectH, numFaces,
+              ns2ms(rgaConsumeTime), ns2ms(faceConsumeTime));
+
+        mPipeline->mFacesnum = numFaces;
+        if (numFaces > 0) {
+            int32_t faceIds[1 * MAX_ROI];
+            uint8_t faceScores[MAX_ROI];
+            int32_t faceRectangles[MAX_ROI * 4];
+            int32_t faceLandmarks[MAX_ROI * 6];
+
+            /* process FaceDetection result */
+            for (i = 0; i < numFaces; i++) {
+                faceIds[i] = i;
+                faceScores[i] = hasSmileFace > 0 ? 100 : 60;
+
+                float zoom_w = mApa.width() / mFaceDetecW;
+                float zoom_h = mApa.height() / mFaceDetectH;
+
+                // We always returns a positive number, so reduce the size of
+                // the face matrix if get a negative number
+                if (faceRects[i].x < 0) {
+                    faceRects[i].width -= abs(faceRects[i].x);
+                    faceRects[i].x = 0;
+                } else if (faceRects[i].y < 0) {
+                    faceRects[i].height -= abs(faceRects[i].y);
+                    faceRects[i].y = 0;
+                }
+
+                // not operate mFaceRect simultaneous
+                l.lock();
+                mPipeline->mFaceRect[i].x = faceRects[i].x;
+                mPipeline->mFaceRect[i].y = faceRects[i].y;
+                mPipeline->mFaceRect[i].width = faceRects[i].width;
+                mPipeline->mFaceRect[i].height = faceRects[i].height;
+                l.unlock();
+                faceRectangles[i*4] = (int32_t)(faceRects[i].x * zoom_w);
+                faceRectangles[1 + i*4] = (int32_t)(faceRects[i].y *zoom_h);
+                faceRectangles[2 + i*4] = faceRectangles[i*4]
+                                            + ((int32_t)(faceRects[i].width * zoom_w));
+                faceRectangles[3 + i*4] = faceRectangles[1 + i*4]
+                                            + ((int32_t)(faceRects[i].height * zoom_h));
+
+                LOGD("%s: @%s： face[%d] [x, y, w, h] from [%d %d %d %d]"
+                      " -> [%d %d %d %d]", mName, __FUNCTION__,
+                      i, faceRects[i].x, faceRects[i].y,
+                      faceRects[i].width, faceRects[i].height,
+                      faceRectangles[i * 4], faceRectangles[1 + i * 4],
+                      (int32_t)(faceRects[i].width * zoom_w),
+                      (int32_t)(faceRects[i].height * zoom_h));
+            }
+
+            mCammetadata->update(ANDROID_STATISTICS_FACE_IDS, faceIds, numFaces);
+            mCammetadata->update(ANDROID_STATISTICS_FACE_SCORES, faceScores, numFaces);
+            mCammetadata->update(ANDROID_STATISTICS_FACE_RECTANGLES, faceRectangles, numFaces*4);
+            mCammetadata->update(ANDROID_STATISTICS_FACE_LANDMARKS, faceLandmarks, numFaces*6);
+
+            if (mMetaCallback) {
+                rkisp_cl_frame_metadata_s cb_result;
+
+                /* callback id for face-detation result */
+                cb_result.id = -555;
+                cb_result.metas = mCammetadata->getAndLock();
+                if (mMetaCallback)
+                    mMetaCallback->metadata_result_callback(mMetaCallback, &cb_result);
+                mCammetadata->unlock(cb_result.metas);
+            }
+        }
+    }
+
+    mFramecount++;
+    LOGD("%s: @%s end, cambuf->v4l2Fmt(%s):mFramecount(%d)",
+         mName, __FUNCTION__, v4l2Fmt2Str(cambuf->v4l2Fmt()), mFramecount);
+    return status;
 }
 
 } /* namespace rkisp2 */

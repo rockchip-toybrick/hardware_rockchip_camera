@@ -23,6 +23,8 @@
 //#include "tasks/RKISP2JpegEncodeTask.h"
 #include "NodeTypes.h"
 #include "RKISP2PostProcessPipeline.h"
+#include "RKISP2CtrlLoop.h"
+
 namespace android {
 namespace camera2 {
 namespace rkisp2 {
@@ -34,6 +36,7 @@ public:
                       NodeTypes nodeName, size_t pipelineDepth);
     virtual ~RKISP2OutputFrameWorker();
 
+    void setPipelineCallback(cl_result_callback_ops *callback);
     void addListener(camera3_stream_t* stream);
     void attachStream(camera3_stream_t* stream);
     void clearListeners();

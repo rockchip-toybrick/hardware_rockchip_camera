@@ -16,6 +16,7 @@ cc_prebuilt_binary {
         },
     },
 }
+
 cc_prebuilt_binary {
     name: "v4l2-ctl",
     allow_undefined_symbols: true,
@@ -33,4 +34,24 @@ cc_prebuilt_binary {
             srcs: ["etc/tools/arm/v4l2-ctl"],
         },
     },
+}
+
+cc_prebuilt_library_shared {
+    name: "libcam_facedetection",
+    allow_undefined_symbols: true,
+    proprietary: true,
+    // These are already stripped, and restripping them just issues diagnostics.
+    strip: {
+        none: true,
+    },
+    arch: {
+        arm64: {
+            srcs: ["lib/arm64/libcam_facedetection.so"],
+        },
+        arm: {
+            srcs: ["lib/arm/libcam_facedetection.so"],
+        },
+    },
+    check_elf_files: false,
+    compile_multilib: "both"
 }

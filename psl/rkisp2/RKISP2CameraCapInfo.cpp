@@ -34,6 +34,7 @@ RKISP2CameraCapInfo::RKISP2CameraCapInfo(SensorType type):
     mFrameInitialSkip(0),
     mStatisticsInitialSkip(0),
     mCITMaxMargin(0),
+    mFaceDetectSupport(false),
     mSupportIsoMap(false),
     mNvmDirectory(""),
     mSensorName(""),

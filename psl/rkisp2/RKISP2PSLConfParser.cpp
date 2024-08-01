@@ -800,6 +800,14 @@ void RKISP2PSLConfParser::handleSensorInfo(const char *name, const char **atts)
     } else if (strcmp(name, "aiq.multicamera") == 0) {
         info->mMultiCameraMode = ((strcmp(atts[1], "true") == 0) ? true : false);
         ALOGD("element name: aiq.multicamera, element value = %d", info->mMultiCameraMode);
+    } else if (strcmp(name, "faceDetect.support") == 0) {
+        info->mFaceDetectSupport = ((strcmp(atts[1], "true") == 0) ? true : false);
+        ALOGD("element name: faceDetect.support, element value = %d", info->mFaceDetectSupport);
+    } else if (strcmp(name, "faceDetect.size") == 0) {
+        info->mFaceSize.width = atoi(atts[1]);
+        info->mFaceSize.height = atoi(atts[3]);
+        ALOGD("%s(%d) info->mFaceSize.widthxheight(%dx%d)",
+              __FUNCTION__, __LINE__, info->mFaceSize.width, info->mFaceSize.height);
     }
 }
 

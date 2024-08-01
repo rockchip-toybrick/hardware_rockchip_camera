@@ -219,6 +219,8 @@ public:  /* private types */
             type(CAPTURE_EVENT_MAX)
         { CLEAR(data); }
     };
+    std::vector<const camera_metadata_t*> mFaceMetas;
+    std::mutex mFaceMetacLock;
 
 private:
     typedef struct {
@@ -256,11 +258,14 @@ private:  /* Methods */
     nsecs_t getFrameDuration(int id);
     status_t saveExposure();
     status_t getPreSettings(struct rkisp_cl_prepare_params_s *param);
+    void appendFaceDetationResult(std::shared_ptr<RKISP2RequestCtrlState> &reqState);
 
 private:  /* Members */
     SharedItemPool<RKISP2RequestCtrlState> mRequestStatePool;
     SharedItemPool<RKISP2CaptureUnitSettings> mCaptureUnitSettingsPool;
     SharedItemPool<RKISP2ProcUnitSettings> mProcUnitSettingsPool;
+    CameraMetadata mLatestFaceMeta;
+    int mLastFaceReqId;
 
     std::map<int, std::shared_ptr<RKISP2RequestCtrlState>> mWaitingForCapture;
     CameraMetadata mLatestAiqMetadata;

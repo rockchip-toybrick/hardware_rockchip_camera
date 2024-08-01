@@ -142,6 +142,12 @@ RKISP2ImguUnit::~RKISP2ImguUnit()
     MemoryUtils::destroyHandleBufferPool(mCameraId);
 }
 
+void RKISP2ImguUnit::setWorkerCallback(cl_result_callback_ops *callback)
+{
+    mMainOutWorker->setPipelineCallback(callback);
+    mSelfOutWorker->setPipelineCallback(callback);
+}
+
 status_t RKISP2ImguUnit::stopAllWorkers()
 {
     status_t status= NO_ERROR;

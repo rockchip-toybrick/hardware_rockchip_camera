@@ -38,6 +38,10 @@
 #include "RKISP2DevImpl.h"
 #endif
 #include "RKISP2FecUnit.h"
+#include "RKISP2CtrlLoop.h"
+#include "FaceDetector.h"
+#define MAX_FACE_COUNT 20
+#include "RgaCropScale.h"
 
 namespace android {
 namespace camera2 {
@@ -165,6 +169,8 @@ class RKISP2PostProcessUnit : public RKISP2IPostProcessListener,
     virtual status_t stop();
     virtual status_t flush();
     virtual status_t drain();
+
+    void setMetaCallback(cl_result_callback_ops *callback);
     /*
      * The processed frame result should be filled in output buffer
      * instead of the internal allocated buffer in this process unit.
@@ -193,6 +199,7 @@ class RKISP2PostProcessUnit : public RKISP2IPostProcessListener,
     virtual bool checkFmt(CameraBuffer* in, CameraBuffer* out);
     typedef std::pair<std::shared_ptr<PostProcBuffer>, \
                       std::shared_ptr<RKISP2ProcUnitSettings>> ProcInfo;
+    cl_result_callback_ops *mMetaCallback;
 
     std::vector<ProcInfo> mInBufferPool;
     std::vector<std::shared_ptr<PostProcBuffer>> mOutBufferPool;
@@ -231,6 +238,10 @@ class RKISP2PostProcessUnit : public RKISP2IPostProcessListener,
     #endif
     std::shared_ptr<RKISP2FecUnit> mFecUnit;
     int mJpegBufCount;
+    bool mIsLastProc;
+    std::mutex mFaceDetecLock;
+    virtual status_t drawFaceFrame(const std::shared_ptr<PostProcBuffer>& buf);
+
  private:
     /*disable copy constructor and assignment*/
     RKISP2PostProcessUnit(const RKISP2PostProcessUnit&);
@@ -378,6 +389,74 @@ class RKISP2PostProcessUnitFec : public RKISP2PostProcessUnit
     RKISP2PostProcessUnitFec& operator=(const RKISP2PostProcessUnitFec&);
 };
 
+class PostProcessUnitFaceDetect : public RKISP2PostProcessUnit
+{
+ public:
+	PostProcessUnitFaceDetect(const char* name, int type, struct FrameSize_t,
+                              const FrameInfo& in, uint32_t buftype = kPostProcBufTypeExt,
+                              int camid = 0, RKISP2PostProcessPipeline* pl = nullptr);
+
+    virtual ~PostProcessUnitFaceDetect();
+    #if 0
+    status_t notifyNewFrame(const std::shared_ptr<PostProcBuffer>& buf,
+                            const std::shared_ptr<ProcUnitSettings>& settings,
+                            int err);
+    #endif
+    virtual status_t processFrame(const std::shared_ptr<PostProcBuffer>& in,
+                                  const std::shared_ptr<PostProcBuffer>& out,
+                                  const std::shared_ptr<RKISP2ProcUnitSettings>& settings);
+
+ private:
+    typedef void (*FaceDetector_start_func)(void *context,int width, int height, int format);
+    typedef void (*FaceDetector_stop_func)(void *context);
+    typedef int (*FaceDetector_prepare_func)(void *context, void* src);
+    typedef int (*FaceDetector_findFaces_func)(void *context, void* src, int orientation, float angle,
+                                               int isDrawRect, int *smileMode,
+                                               struct RectFace** faces, int *num);
+    typedef void* (*FaceDetector_initizlize_func)(int type, float threshold, int smileMode);
+    typedef void (*FaceDetector_destory_func)(void *context);
+    typedef int (*FaceDector_nofity_func)(struct RectFace* faces, int* num);
+
+    status_t initializeFaceDetect(int width,int height);
+    status_t faceScale(const std::shared_ptr<PostProcBuffer>& in,
+                                  const std::shared_ptr<RKISP2ProcUnitSettings>& settings);
+
+    void deInitializeFaceDetect();
+    struct face_detector_func_s {
+        void* mLibFaceDetectLibHandle;
+        FaceDetector_start_func mFaceDectStartFunc;
+        FaceDetector_stop_func mFaceDectStopFunc;
+        FaceDetector_prepare_func mFaceDectprepareFunc;
+        FaceDetector_findFaces_func mFaceDectFindFaceFun;
+        FaceDetector_initizlize_func mFaceDetector_initizlize_func;
+        FaceDetector_destory_func mFaceDetector_destory_func;
+    };
+
+    /*disable copy constructor and assignment*/
+    PostProcessUnitFaceDetect(const PostProcessUnitFaceDetect&);
+    PostProcessUnitFaceDetect& operator=(const PostProcessUnitFaceDetect&);
+    // cache active pixel array
+    CameraWindow mApa;
+    int mCurOrintation;
+    float mCurBiasAngle;
+    int mFaceDetecW;
+    int mFaceDetectH;
+    int32_t mFaceFrameNum;
+    bool mFaceDetecInit;
+    int32_t mFramecount;
+    void* mFaceContext;
+    bool mFaceDetectionDone;
+    struct face_detector_func_s mFaceDetectorFun;
+    FaceDector_nofity_func mFaceDectNotify;
+    std::shared_ptr<PostProcBuffer> mRGABuf;
+    char* pRgaoutbuf;
+    /* MetaData*/
+    CameraMetadata *mCammetadata;
+    camera_metadata_t *mMeta;
+    im_rect mFaceRect[MAX_FACE_COUNT];
+};
+
+
 /*
  * used to do post processes for camera3 stream.
  *
@@ -438,6 +517,8 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
      */
     RKISP2PostProcessPipeline(RKISP2IPostProcessListener* listener, int camid);
     ~RKISP2PostProcessPipeline();
+
+    void setMetaCallback(cl_result_callback_ops *callback);
     /* construt the pipeline*/
     status_t prepare(const FrameInfo& in,
                      const std::vector<camera3_stream_t*>& streams,
@@ -462,6 +543,10 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
     int getCameraId() { return mCameraId; };
     camera3_stream_t* getStreamByType(int stream_type);
     bool mIsNeedcached;
+    bool mFaceDetectSupport = false;
+    struct FrameSize_t mFaceDetSize;
+    struct RectFace mFaceRect[MAX_FACE_COUNT] = {};
+    int mFacesnum = 0;
 
  private:
     virtual void messageThreadLoop(void);
@@ -489,6 +574,7 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
 
     bool IsRawStream(camera3_stream_t* stream);
 
+    cl_result_callback_ops *mMataCallback;
     std::vector<std::map<camera3_stream_t*, int>> mStreamToTypeMap;
     std::vector<std::shared_ptr<RKISP2PostProcessUnit>> mPostProcUnits;
     std::map<camera3_stream_t*, RKISP2PostProcessUnit*> mStreamToProcUnitMap;
@@ -534,6 +620,7 @@ class RKISP2PostProcessPipeline: public IMessageHandler {
     RKISP2PostProcessPipeline& operator=(const RKISP2PostProcessPipeline&);
     std::unique_ptr<OutputBuffersHandler> mOutputBuffersHandler;
     camera3_stream_t mUvc;
+    std::mutex mLock;
 };
 const element_value_t PPMsg_stringEnum[] = {
     {"MESSAGE_ID_EXIT", RKISP2PostProcessPipeline::MESSAGE_ID_EXIT },

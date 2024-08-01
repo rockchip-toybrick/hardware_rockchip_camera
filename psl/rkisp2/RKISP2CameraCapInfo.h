@@ -56,6 +56,8 @@ public:
     const std::string getMediaCtlEntityType(std::string name) const;
     const char* getAiqWorkingMode(void) const { return mWorkingMode.c_str(); };
     bool getMultiCameraMode(void) const { return mMultiCameraMode; };
+    bool getFaceDetectSupport(void) const { return mFaceDetectSupport; }
+    struct FrameSize_t getSupportFaceSize(void) const { return mFaceSize; }
 
     int mSensorType;
     int mSensorFlipping;
@@ -70,6 +72,8 @@ public:
     int mCITMaxMargin;
     bool mSupportIsoMap;
 	bool mForceAutoGenAndroidMetas;
+   bool mFaceDetectSupport;
+   struct FrameSize_t mFaceSize;
 
     std::vector<struct FrameSize_t> mSupportTuningSize;
 
