@@ -622,6 +622,20 @@ status_t PSLConfParser::addCamera(int cameraId, const std::string &sensorName, c
     for (int i = 0; i < CAMERA_TEMPLATE_COUNT; i++)
         mDefaultRequests.push_back(emptyReq);
 
+    if (strstr(sensorName.c_str(),"IT6616")
+        || strstr(sensorName.c_str(),"IT6510")
+        || strstr(sensorName.c_str(),"LT6911")
+        || strstr(sensorName.c_str(),"LT7911")
+        || strstr(sensorName.c_str(),"LT8668SX")
+        || strstr(sensorName.c_str(),"LT8619C")
+        || strstr(sensorName.c_str(),"tc35874x")
+        || strstr(sensorName.c_str(),"rk628-csi"))
+    {
+        const char* idStr = std::to_string(cameraId).c_str();
+        LOGI("%s setprop persist.vendor.camera.hdmiid=%s",sensorName.c_str(), idStr);
+        property_set("persist.vendor.camera.hdmiid",idStr);
+    }
+
     return NO_ERROR;
 }
 
