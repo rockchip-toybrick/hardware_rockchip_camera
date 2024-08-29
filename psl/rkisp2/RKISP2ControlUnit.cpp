@@ -464,7 +464,7 @@ int RawCamFlashCtrUnit::updateFlashResult(CameraMetadata *result)
         aeFlashMode = ANDROID_FLASH_MODE_OFF;
     else
         aeFlashMode = ANDROID_FLASH_MODE_SINGLE;
-    result->update(ANDROID_FLASH_MODE, &mAeFlashMode, 1);
+    result->update(ANDROID_FLASH_MODE, &aeFlashMode, 1);
 
     uint8_t flashState = ANDROID_FLASH_STATE_READY;
     if (mV4lFlashMode == V4L2_FLASH_LED_MODE_FLASH ||
