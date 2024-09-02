@@ -1533,6 +1533,8 @@
             <frame.initialSkip value="3"/> <!-- camera3 HAL CPF parameters moved here end-->
             <isoAnalogGain1 value="75"/> <!--Pseudo ISO corresponding analog gain value 1.0. -->
             <cITMaxMargin value="10"/> <!--coarse integration time max margin -->
+            <faceDetect.support value="true"/> <!--using faceDetect or not -->
+            <faceDetect.size value="256" value_h="192"/> <!--Size used to do faceDetect wxh -->
         </Sensor_info_RKISP1>
 
 <!-- ******************PSL specific section end **************************************************************-->
