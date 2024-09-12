@@ -353,9 +353,22 @@ RKISP2CameraHw::checkNeedReconfig(UseCase newUseCase, std::vector<camera3_stream
     }
 
     //pipeline should reconfig when mainpath size expand
-    mGCM.getHwPathSize("rkisp1_mainpath", pathSize);
-    mImguUnit->getConfigedHwPathSize("rkisp1_mainpath", lastPathSize);
+    mGCM.getHwPathSize("rkisp_mainpath", pathSize);
+    mImguUnit->getConfigedHwPathSize("rkisp_mainpath", lastPathSize);
     mConfigChanged = pathSize > lastPathSize ? true : false;
+
+    int minWidth = 2592, minHeight= 1944;
+    for (unsigned int i = 0; i < activeStreams.size(); i++) {
+        if (activeStreams[i]->width < minWidth) {
+            minWidth = activeStreams[i]->width;
+        }
+        if (activeStreams[i]->height < minHeight) {
+            minHeight = activeStreams[i]->height;
+        }
+    }
+    if ((minWidth > SP_MAX_WIDTH || minHeight > SP_MAX_HEIGHT) && activeStreams.size()> 2)
+        mConfigChanged = true;
+
 }
 
 status_t
