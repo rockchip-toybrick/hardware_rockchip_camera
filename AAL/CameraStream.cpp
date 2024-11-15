@@ -97,11 +97,11 @@ void CameraStream::showDebugFPS(int streamType)
                 (double)(1000000000)) / (double)diff;
         switch(streamType) {
             case STREAM_PREVIEW:
-                LOGI("%s: Preview FPS : %.4f: mFrameCount=%d", __func__, fps, mFrameCount);
+                ALOGI("%s: Preview FPS : %.4f: mFrameCount=%d", __func__, fps, mFrameCount);
                 LOGI("%s, mPendingRequests size=%zu", __func__, mPendingRequests.size());
                 break;
             case STREAM_VIDEO:
-                LOGI("%s: Video FPS : %.4f", __func__, fps);
+                ALOGI("%s: Video FPS : %.4f", __func__, fps);
                 break;
             default:
                 break;
