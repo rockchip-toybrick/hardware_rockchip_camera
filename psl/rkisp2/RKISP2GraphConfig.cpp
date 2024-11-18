@@ -2323,12 +2323,15 @@ void RKISP2GraphConfig::cal_crop(uint32_t &src_w, uint32_t &src_h, uint32_t &dst
 
     float ratio_src = src_w * 1.0 / src_h;
     float ratio_dst = dst_w * 1.0 / dst_h;
+    float scale_ratio_w = src_w * 1.0 / dst_w;
+    float scale_ratio_h = src_h * 1.0 / dst_h;
+
     if(ratio_src > ratio_dst)
         src_w = (uint32_t)(src_h * ratio_dst);
     if(ratio_src < ratio_dst)
         src_h = (uint32_t)(src_w / ratio_dst);
-    LOGD("@%s : src_ratio:%f, dst_ratio:%f, src(%dx%d), dst(%dx%d)", __FUNCTION__,
-         ratio_src, ratio_dst,src_w, src_h, dst_w, dst_h);
+    LOGD("@%s : src_ratio:%f, dst_ratio:%f, src(%dx%d), dst(%dx%d)， scale_ratio_w(%f), scale_ratio_h(%f)",
+        __FUNCTION__, ratio_src, ratio_dst,src_w, src_h, dst_w, dst_h, scale_ratio_w ,scale_ratio_h);
 }
 
 int RKISP2GraphConfig::get_reso_dist(camera3_stream_t* stream, uint32_t max_width, uint32_t max_height)
@@ -2849,8 +2852,17 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
             uint32_t videoHeight = mpInHeight;
 
             if (mp_need_crop) {
-                videoWidth = mpStream->width > mpInWidth ? mpInWidth : mpStream->width ;
-                videoHeight = mpStream->height > mpInHeight ? mpInHeight : mpStream->height ;
+                // add scale strategy for better video quality
+                if ((mpInWidth >= mpStream->width * 8) && (mpInHeight >= mpStream->height * 8)) {
+                    videoWidth = mpStream->width * 8;
+                    videoHeight = mpStream->height * 8;
+                } else if ((mpInWidth >= mpStream->width * 4) && (mpInHeight >= mpStream->height * 4)) {
+                    videoWidth = mpStream->width * 4;
+                    videoHeight = mpStream->height * 4;
+                } else {
+                    videoWidth = mpStream->width > mpInWidth ? mpInWidth : mpStream->width;
+                    videoHeight = mpStream->height > mpInHeight ? mpInHeight : mpStream->height;
+                }
             }
             addSelectionVideoParams(mpName, select, mediaCtlConfig);
             addFormatParams(mpName, videoWidth, videoHeight, mpSinkPad, videoOutFormat, 0, 0, mediaCtlConfig);
