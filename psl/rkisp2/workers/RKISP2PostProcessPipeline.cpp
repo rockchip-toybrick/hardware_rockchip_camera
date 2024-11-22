@@ -2499,8 +2499,8 @@ RKISP2PostProcessUnitDigitalZoom::processFrame(const std::shared_ptr<PostProcBuf
     LOGD("@%s : mirror handleing %d pid=%d", __FUNCTION__, mirror_handing, syscall(SYS_gettid));
 
     // check if zoom is required
-    if (mBufType != kPostProcBufTypeExt &&
-        crop.width() ==  mApa.width() && crop.height() == mApa.height()) {
+    if (mBufType != kPostProcBufTypeExt /*&&
+        crop.width() ==  mApa.width() && crop.height() == mApa.height()*/) {
         // HwJpeg encode require buffer width and height align to 16 or large enough.
         // digital zoom out buffer is internal gralloc buffer with size 2xWxH, so it
         // can always meet the Hwjpeg input condition. we use it as a workaround
