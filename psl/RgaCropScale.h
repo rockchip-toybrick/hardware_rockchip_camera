@@ -37,11 +37,17 @@ namespace camera2 {
 #define RGA_VIRTUAL_W (8128)
 #define RGA_ACTIVE_H (8128)
 #define RGA_VIRTUAL_H (8128)
-#elif (defined(TARGET_RK3576)||defined(TARGET_RK3562))
+#elif defined(TARGET_RK3562)
 #define RGA_VER (2.0)
 #define RGA_ACTIVE_W (4096)
 #define RGA_VIRTUAL_W (8192)
 #define RGA_ACTIVE_H (4096)
+#define RGA_VIRTUAL_H (8192)
+#elif defined(TARGET_RK3576)
+#define RGA_VER "2.0pro"
+#define RGA_ACTIVE_W (8192)
+#define RGA_VIRTUAL_W (8192)
+#define RGA_ACTIVE_H (8192)
 #define RGA_VIRTUAL_H (8192)
 #else
 #define RGA_VER (2.0)
