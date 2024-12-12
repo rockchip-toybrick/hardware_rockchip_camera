@@ -521,7 +521,6 @@ int RgaCropScale::WidthSplit_CropScaleNV12Or21(struct Params* rgain, struct Para
     }
     ALOGD("@%s: do second split copy/ scale", __FUNCTION__);
 
-
     rgain->offset_x = in_offset_x + in_w / 2;
     rgaout->offset_x = out_w_stride / 2;
 
@@ -777,7 +776,7 @@ int RgaCropScale::CropScaleNV12Or21Async(struct Params* in, struct Params* out)
     drect.y = out->offset_y;
     drect.width = out->width;
     drect.height = out->height;
-    usage |= IM_ASYNC;
+    usage |= IM_SYNC;
     if (in->mirror)
     {
         usage |= IM_HAL_TRANSFORM_FLIP_H;
@@ -786,11 +785,14 @@ int RgaCropScale::CropScaleNV12Or21Async(struct Params* in, struct Params* out)
     {
         usage |= IM_HAL_TRANSFORM_FLIP_V;
     }
+#if 0
     if (in->acquire_fence_fd != -1)
     {
        imsync(in->acquire_fence_fd);
     }
-    ret = improcess(src, dst, {}, srect, drect, {}, -1, &out->release_fence_fd, NULL, usage);
+#endif
+
+    ret = improcess(src, dst, {}, srect, drect, {}, in->acquire_fence_fd, &out->release_fence_fd, NULL, usage);
     if (ret != IM_STATUS_SUCCESS) {
         ALOGE("%s improcess failed, %s\n", LOG_TAG, imStrError((IM_STATUS)ret));
     }
@@ -810,6 +812,7 @@ int RgaCropScale::WaitFenceDone(int in_fence_fd){
     int ret = 0;
     HAL_TRACE_CALL(CAM_GLBL_DBG_HIGH);
 
+    return 0;
 #if defined(ANDROID_VERSION_ABOVE_12_X)
     ret = imsync(in_fence_fd);
     if (ret != IM_STATUS_SUCCESS) {
