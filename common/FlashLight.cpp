@@ -21,6 +21,7 @@
 #include "LogHelper.h"
 #include <FlashLight.h>
 #include "PlatformData.h"
+#include "Metadata.h"
 
 namespace android {
 namespace camera2 {
@@ -129,7 +130,29 @@ int32_t FlashLight::init(const int cameraId)
             }
         }
     }
+    if (hasFlash) {
+        camera_metadata_t* plainStaticMeta;
+        plainStaticMeta = (camera_metadata_t*)PlatformData::getStaticMetadata(cameraId);
+        if (plainStaticMeta == nullptr) {
+            LOGE("Failed to get camera %d StaticMetadata", cameraId);
+            return UNKNOWN_ERROR;
+        }
 
+        CameraMetadata staticMeta(plainStaticMeta);
+        camera_metadata_entry entry;
+
+        entry = staticMeta.find(ANDROID_FLASH_INFO_AVAILABLE);
+        if (entry.count == 1) {
+            hasFlash = (entry.data.u8[0] > 0) ? true : false;
+            LOGI("Flash %s for camera id %d",
+                hasFlash ? "enabled" : "NOT enabled", cameraId);
+            if (!hasFlash)
+            {
+                 retVal = -ENOSYS;
+            }
+        }
+        staticMeta.release();
+    }
     LOGD("@%s : retval = %d", __FUNCTION__, retVal);
     return retVal;
 }
