@@ -666,6 +666,7 @@ RKISP2ControlUnit::getDevicesPath()
         if (subdev.get()) {
             mDevPathsMap[KDevPathTypeSensorNode] = subdev->name();
             mSensorSubdev = subdev;
+            LOGD("%s: mSensorSubdev:%s", __FUNCTION__, mSensorSubdev->name());
         }
     }
 
@@ -1117,7 +1118,15 @@ RKISP2ControlUnit::configStreams(std::vector<camera3_stream_t*> &activeStreams, 
                 break;
             }
         }
-        LOGD("@%s : mEnable3A :%d", __FUNCTION__, mEnable3A);
+        int width,height, code;
+        if (mSensorSubdev.get()) {
+             mSensorSubdev->getPadFormat(0, width, height, code);
+             prepareParams.width = width;
+             prepareParams.height = height;
+
+             ALOGD("@%s : mEnable3A :%d,  prepare sensor output width*height(%dx%d).", __FUNCTION__,
+                   mEnable3A, prepareParams.width, prepareParams.height);
+        }
 
         const RKISP2CameraCapInfo *cap = getRKISP2CameraCapInfo(mCameraId);
         prepareParams.work_mode = cap->getAiqWorkingMode();
