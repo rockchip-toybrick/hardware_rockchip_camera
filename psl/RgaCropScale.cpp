@@ -28,7 +28,7 @@
 namespace android {
 namespace camera2 {
 
-static void empty_structure(rga_buffer_t *src, rga_buffer_t *dst, rga_buffer_t *pat,
+static void RkCamera_empty_structure(rga_buffer_t *src, rga_buffer_t *dst, rga_buffer_t *pat,
                                 im_rect *srect, im_rect *drect, im_rect *prect, im_opt_t *opt) {
     if (src != NULL)
         memset(src, 0, sizeof(*src));
@@ -136,7 +136,7 @@ int RgaCropScale::Im2dBlit(struct Params* in, struct Params* out)
 	im_rect srect;
 	im_rect drect;
 	im_rect prect;
-	empty_structure(NULL, NULL, &pat, &srect, &drect, &prect, &opt);
+	RkCamera_empty_structure(NULL, NULL, &pat, &srect, &drect, &prect, &opt);
 
     src_rect.x = in->offset_x;
     src_rect.y = in->offset_y;
