@@ -76,6 +76,9 @@ const string MEDIACTL_POSTVIEWNAME = "postview";
 const string MEDIACTL_STATNAME = "rkisp1-statistics";
 const string MEDIACTL_VIDEONAME_CIF = "stream_cif_dvp_id0";
 const string MEDIACTL_VIDEONAME_CIF_MIPI_ID0 = "stream_cif_mipi_id0";
+const string MEDIACTL_VIDEONAME_CIF_MIPI_ID1 = "stream_cif_mipi_id1";
+const string MEDIACTL_VIDEONAME_CIF_MIPI_ID2 = "stream_cif_mipi_id2";
+const string MEDIACTL_VIDEONAME_CIF_MIPI_ID3 = "stream_cif_mipi_id3";
 
 RKISP2GraphConfig::RKISP2GraphConfig() :
         mManager(nullptr),
@@ -95,6 +98,7 @@ RKISP2GraphConfig::RKISP2GraphConfig() :
     mCSIBE = CSI_BE + "0";
     mIsMipiInterface = false;
     mSensorLinkedToCIF = false;
+    misSerdesSensor = false;
     mMpOutputRaw = false;
     mMainNodeName.clear();
     mSecondNodeName.clear();
@@ -2513,6 +2517,34 @@ status_t RKISP2GraphConfig::getSensorMediaCtlConfig(int32_t cameraId,
         if (!isSensorInIspMedia && name.find("cif") != std::string::npos) {
             mSensorLinkedToCIF = true;
         }
+
+        // check if serdes camera
+        if (name.find("des") != std::string::npos) {
+            LOGI("@%s : find serdes camera", __FUNCTION__);
+
+            misSerdesSensor = true;
+
+            std::shared_ptr<MediaEntity> desEntity = nullptr;
+            //check sensor->des->mipi->cif case
+            ret = mMediaCtl->getMediaEntity(desEntity, name.c_str());
+            CheckError(ret != NO_ERROR, UNKNOWN_ERROR, "@%s,  failed to get des(%s) MediaEntity",
+                           __FUNCTION__, name.c_str());
+            string phyname = getSinkEntityName(desEntity, 0);
+
+            if (phyname.find("dphy") != std::string::npos) {
+                mIsMipiInterface = true;
+                mSnsLinkedPhyEntNm = phyname;
+                //check sensor->mipi->cif case
+                ret = mMediaCtl->getMediaEntity(phyEntity, phyname.c_str());
+                CheckError(ret != NO_ERROR, UNKNOWN_ERROR, "@%s,  failed to get csi(%s) MediaEntity",
+                            __FUNCTION__, phyname.c_str());
+
+                string ispname = getSinkEntityName(phyEntity, 0);
+                if(ispname.find("cif") != std::string::npos)
+                    mSensorLinkedToCIF = true;
+            }
+        }
+
         if (isSensorInIspMedia || name.find("dphy") != std::string::npos) {
             mIsMipiInterface = true;
             mSnsLinkedPhyEntNm = name;
@@ -2785,9 +2817,35 @@ status_t RKISP2GraphConfig::getImguMediaCtlConfig(int32_t cameraId,
 	    }
     }
     if(mSensorLinkedToCIF){
-		addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mediaCtlConfig);
-		addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mCurSensorFormat.width, mCurSensorFormat.height,
-				0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+        if (misSerdesSensor) {
+            const struct SensorDriverDescriptor *sensorDes;
+            sensorDes = PlatformData::getCameraHWInfo()->getSensorDrvDes(cameraId);
+
+            int channel = std::stoi(std::string(sensorDes->mModuleIndexStr).substr(1));
+
+            if (channel == 0) {
+                addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mediaCtlConfig);
+                addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mCurSensorFormat.width, mCurSensorFormat.height,
+                        0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+            } else if (channel == 1) {
+                addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID1, mediaCtlConfig);
+                addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID1, mCurSensorFormat.width, mCurSensorFormat.height,
+                        0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+            } else if (channel == 2) {
+                addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID2, mediaCtlConfig);
+                addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID2, mCurSensorFormat.width, mCurSensorFormat.height,
+                        0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+            } else if (channel == 3) {
+                addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID3, mediaCtlConfig);
+                addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID3, mCurSensorFormat.width, mCurSensorFormat.height,
+                        0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+            }
+
+        } else {
+            addImguVideoNode(IMGU_NODE_VIDEO, MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mediaCtlConfig);
+            addFormatParams(MEDIACTL_VIDEONAME_CIF_MIPI_ID0, mCurSensorFormat.width, mCurSensorFormat.height,
+                    0, V4L2_PIX_FMT_NV12, 0, 0, mediaCtlConfig);
+        }
         return OK;
     }
     // isp input pad format and selection config

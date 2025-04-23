@@ -547,6 +547,7 @@ private:
     string mSecondNodeName;
     bool   mIsMipiInterface;
     bool   mSensorLinkedToCIF;
+    bool   misSerdesSensor;
     string mSnsLinkedPhyEntNm;
     bool   mMpOutputRaw;
     SensorFormat mAvailableSensorFormat;
