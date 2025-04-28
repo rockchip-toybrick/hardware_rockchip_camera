@@ -365,7 +365,7 @@ status_t RKISP2ImguUnit::mapStreamWithDeviceNode(int phyStreamsNum)
             listener.second = IMGU_NODE_VIDEO;
             listeners.push_back(listener);
         }
-    } else if (streamNum == 3 || mActiveStreams.inputStream) {
+    } else if (streamNum <= 5 || mActiveStreams.inputStream) {
         videoIdx = 0;
         // find the maxium size stream
         for (int i = 0; i < availableStreams.size(); i++) {
@@ -573,7 +573,7 @@ RKISP2ImguUnit::createProcessingTasks(std::shared_ptr<RKISP2GraphConfig> graphCo
         if (it.first == IMGU_NODE_STILL || it.first == IMGU_NODE_VIDEO) {
             if(mStreamNodeMapping[it.first] == NULL)
                 continue;
-            
+
             LOGD("mMainOutWorker attach node:name :%s",it.second->name());
             mMainOutWorker->attachNode(it.second);
             mMainOutWorker->attachStream(mStreamNodeMapping[it.first]);
