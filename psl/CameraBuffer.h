@@ -46,6 +46,7 @@ public:
         BUF_TYPE_HANDLE,
         BUF_TYPE_MALLOC,
         BUF_TYPE_MMAP,
+        BUF_TYPE_DMABUF,
     };
 
 public:
@@ -69,6 +70,7 @@ public:
     CameraBuffer(int w, int h, int s, int v4l2fmt, void* usrPtr, int cameraId, int dataSizeOverride = 0);
     CameraBuffer(int w, int h, int s, int fd, int dmaBufFd, int length, int v4l2fmt,
                  int offset, int prot, int flags);
+    CameraBuffer(int w, int h, int s, int dmaBufFd, int length, int v4l2fmt);
     /**
      * initialization for the wrapper around the framework buffers
      */

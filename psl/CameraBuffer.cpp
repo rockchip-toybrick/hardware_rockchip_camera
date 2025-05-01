@@ -223,6 +223,59 @@ CameraBuffer::CameraBuffer(int w, int h, int s, int fd, int dmaBufFd, int length
 #endif
 }
 
+CameraBuffer::CameraBuffer(int w, int h, int s, int dmaBufFd, int length, int v4l2fmt):
+        mWidth(w),
+        mHeight(h),
+        mSize(length),
+        mFormat(0),
+        mV4L2Fmt(v4l2fmt),
+        mStride(s),
+        mUsage(0),
+        mInit(false),
+        mLocked(false),
+        mRegistered(false),
+        mType(BUF_TYPE_DMABUF),
+        mGbmBufferManager(nullptr),
+        mHandle(nullptr),
+        mHandlePtr(nullptr),
+        mOwner(nullptr),
+        mDataPtr(nullptr),
+        mRequestID(0),
+        mpSyncFence(nullptr),
+        captureDoned(false),
+        mCameraId(-1),
+        mDmaBufFd(dmaBufFd)
+{
+    LOGI("%s create mmap camera buffer %p", __FUNCTION__, this);
+    mLocked = true;
+    mInit = true;
+    CLEAR(mUserBuffer);
+    CLEAR(mTimestamp);
+    CLEAR(mHandle);
+    mUserBuffer.release_fence = -1;
+    mUserBuffer.acquire_fence = -1;
+    mRgaFenceFd = -1;
+    mDmaBufRgaFd = -1;
+
+#if defined(ANDROID_VERSION_ABOVE_12_X)
+    im_handle_param_t param;
+	param.width = mWidth;
+	param.height = mHeight;
+    if (V4L2_PIX_FMT_NV12 == mV4L2Fmt)
+    {
+        param.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    }else{
+        param.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+    }
+    mDmaBufRgaFd = importbuffer_fd(mDmaBufFd, &param);
+    if(mDmaBufRgaFd == 0){
+        LOGE("Failed to import buffer mDmaBufFd:%d mDmaBufRgaFd:%d", mDmaBufFd,mDmaBufRgaFd);
+        mDmaBufRgaFd = -1;
+    }
+    LOGI("%s buf:%p mHandle:%p mType:%d mDmaBufFd:%d mDmaBufRgaFd:%d",__PRETTY_FUNCTION__,this,mHandle,mType, mDmaBufFd, mDmaBufRgaFd);
+#endif
+}
+
 /**
  * init
  *
@@ -382,6 +435,9 @@ CameraBuffer::~CameraBuffer()
                     unlock();
                 mGbmBufferManager->Free(mHandle);
             }
+            break;
+        case BUF_TYPE_DMABUF:
+            ///TODO: BUF_TYPE_DMABUF deal with
             break;
         default:
             break;

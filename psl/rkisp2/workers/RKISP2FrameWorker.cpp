@@ -206,6 +206,18 @@ status_t RKISP2FrameWorker::allocateWorkerBuffers()
                 return BAD_VALUE;
             }
             break;
+        case V4L2_MEMORY_DMABUF:
+            {
+            buf = std::make_shared<CameraBuffer>(mFormat.width(),
+                mFormat.height(),
+                mFormat.bytesperline(),
+                mBuffers[i].fd(),
+                mBuffers[i].length(),
+                mFormat.pixelformat());
+            if (buf.get() == nullptr)
+                return BAD_VALUE;
+            }
+            break;
         default:
             LOGE("@%s Unsupported memory type %d", __func__, memType);
             return BAD_VALUE;
